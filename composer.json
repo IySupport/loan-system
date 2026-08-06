@@ -1,0 +1,16 @@
+{
+    "name": "yourcompany/loan-management",
+    "description": "Loan Processing and Tracking System",
+    "type": "project",
+    "require": {
+        "php": ">=8.3",
+        "phpoffice/phpspreadsheet": "^1.29"
+    },
+    "autoload": {
+        "classmap": [
+            "core/",
+            "models/",
+            "controllers/"
+        ]
+    }
+}
