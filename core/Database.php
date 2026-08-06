@@ -8,7 +8,14 @@ class Database
     {
         if (self::$instance === null) {
             $cfg = require APP_ROOT . '/config/database.php';
-            $dsn = sprintf('pgsql:host=%s;port=%s;dbname=%s', $cfg['host'], $cfg['port'], $cfg['name']);
+            // sslmode is required by managed Postgres providers like Neon
+            // (they reject plain, unencrypted connections). Defaults to
+            // 'prefer' so this stays a no-op against a local Postgres that
+            // has no SSL configured.
+            $dsn = sprintf(
+                'pgsql:host=%s;port=%s;dbname=%s;sslmode=%s',
+                $cfg['host'], $cfg['port'], $cfg['name'], $cfg['sslmode']
+            );
             try {
                 self::$instance = new PDO($dsn, $cfg['user'], $cfg['pass'], [
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
