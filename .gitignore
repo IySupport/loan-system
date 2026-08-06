@@ -2,5 +2,6 @@
 /.env
 
 /node_modules/
-
+neon-db-config.patch
+*.sql
 *.log
