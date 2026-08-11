@@ -132,6 +132,7 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
                     groupBox.value     = groupLabel(data.group, data.next_loan_count);
                     // Prefill from their most recent loan as a convenience,
                     // but don't clobber anything the admin already typed.
+                    alert('Work: ' + workplaceNameInput.value  + ' ' + workContactInput.value + '\n' );
                     if (!workplaceNameInput.value) workplaceNameInput.value = data.last_workplace_name || '';
                     if (!workContactInput.value)   workContactInput.value   = data.last_work_contact || '';
 
