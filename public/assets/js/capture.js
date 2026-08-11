@@ -134,6 +134,8 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
                     // but don't clobber anything the admin already typed.
                     if (!workplaceNameInput.value) workplaceNameInput.value = data.last_workplace_name || '';
                     if (!workContactInput.value)   workContactInput.value   = data.last_work_contact || '';
+
+                    alert('Work: ' + workplaceNameInput.value  + ' ' + workContactInput.value + '\n' );
                 } else {
                     hint.textContent = 'New client — please fill in the details below.';
                     banner.classList.add('d-none');
