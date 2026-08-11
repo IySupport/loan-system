@@ -52,6 +52,7 @@ class Loan extends Model
     public function create(array $d): array
     {
         $this->db->beginTransaction();
+         error_log('[TEST 1] Transaction started');
         try {
             $clientModel = new Client();
             $client = $clientModel->findOrCreate([
@@ -61,7 +62,7 @@ class Loan extends Model
                 'account_number' => $d['account_number'] ?? null,
                 'phone'          => $d['phone'] ?? null,
             ]);
-
+           error_log('[TEST 2] Client ready. ID: ' . $client['id']);
             $reference = $this->nextReferenceNumber();
 
             // $this->query(
@@ -83,7 +84,7 @@ class Loan extends Model
             //         'created_by'          => $d['created_by'] ?? null,
             //     ]
             // );
-
+ error_log('[TEST 3] Reference generated: ' . $reference);
 
             // date_loaded drives which month's branch budget this loan counts
             // against, and must be editable so older loans can be captured
@@ -147,8 +148,9 @@ class Loan extends Model
             );
 
             $loanId = (int) $stmt->fetchColumn();
+             error_log('[TEST 4] Loan inserted. ID: ' . $loanId);
             $this->db->commit();
-
+             error_log('[TEST 5] Transaction committed');
             $loanCount = (new Client())->loanCount($client['id']);
 
             return [
@@ -173,7 +175,7 @@ class Loan extends Model
         ' in ' . $e->getFile() .
         ':' . $e->getLine()
     );
-
+    error_log('[LOAN ERROR] ' . $e->getMessage());
     throw $e;
 }
     }
