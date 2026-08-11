@@ -26,20 +26,39 @@ class Client extends Model
     }
 
     public function create(array $d): int
-    {
-        $this->query(
-            "INSERT INTO clients (name, surname, id_number, account_number, phone)
-             VALUES (:name, :surname, :id_number, :account_number, :phone)",
-            [
-                'name'           => $d['name'],
-                'surname'        => $d['surname'],
-                'id_number'      => $d['id_number'],
-                'account_number' => $d['account_number'] ?? null,
-                'phone'          => $d['phone'] ?? null,
-            ]
-        );
-        return (int) $this->db->lastInsertId('clients_id_seq');
-    }
+{
+    $stmt = $this->query(
+        "INSERT INTO clients
+            (name, surname, id_number, account_number, phone)
+         VALUES
+            (:name, :surname, :id_number, :account_number, :phone)
+         RETURNING id",
+        [
+            'name'           => $d['name'],
+            'surname'        => $d['surname'],
+            'id_number'      => $d['id_number'],
+            'account_number' => $d['account_number'] ?: null,
+            'phone'          => $d['phone'] ?: null,
+        ]
+    );
+
+    return (int) $stmt->fetchColumn();
+}
+    // public function create(array $d): int
+    // {
+    //     $this->query(
+    //         "INSERT INTO clients (name, surname, id_number, account_number, phone)
+    //          VALUES (:name, :surname, :id_number, :account_number, :phone)",
+    //         [
+    //             'name'           => $d['name'],
+    //             'surname'        => $d['surname'],
+    //             'id_number'      => $d['id_number'],
+    //             'account_number' => $d['account_number'] ?? null,
+    //             'phone'          => $d['phone'] ?? null,
+    //         ]
+    //     );
+    //     return (int) $this->db->lastInsertId('clients_id_seq');
+    // }
 
     public function update(int $id, array $d): bool
     {
@@ -119,13 +138,38 @@ class Client extends Model
      * Find existing client by ID number, or create a new one.
      * Returns the client's row plus loan_count (before the new loan is added) and group.
      */
+    // public function findOrCreate(array $d): array
+    // {
+    //     $existing = $this->findByIdNumber($d['id_number']);
+    //     if ($existing) {
+    //         return $existing;
+    //     }
+    //     $newId = $this->create($d);
+    //     return $this->find($newId);
+    // }
     public function findOrCreate(array $d): array
-    {
-        $existing = $this->findByIdNumber($d['id_number']);
-        if ($existing) {
-            return $existing;
-        }
-        $newId = $this->create($d);
-        return $this->find($newId);
-    }
+{
+    $stmt = $this->query(
+        "INSERT INTO clients
+            (name, surname, id_number, account_number, phone)
+         VALUES
+            (:name, :surname, :id_number, :account_number, :phone)
+         ON CONFLICT (id_number)
+         DO UPDATE SET
+            name = EXCLUDED.name,
+            surname = EXCLUDED.surname,
+            account_number = EXCLUDED.account_number,
+            phone = EXCLUDED.phone
+         RETURNING *",
+        [
+            'name'           => $d['name'],
+            'surname'        => $d['surname'],
+            'id_number'      => $d['id_number'],
+            'account_number' => $d['account_number'] ?: null,
+            'phone'          => $d['phone'] ?: null,
+        ]
+    );
+
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
 }

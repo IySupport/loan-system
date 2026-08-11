@@ -11,7 +11,8 @@
 <link href="https://cdn.datatables.net/1.13.11/css/dataTables.bootstrap5.min.css" rel="stylesheet">
 <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
 <!-- <link rel="icon" type="image/png" href="<?= APP_URL ?>/public/assets/images/iylogo.png"> -->
-<link rel="icon" type="image/png" href="assets/images/iylogo.png">
+<!-- <link rel="icon" type="image/png" href="assets/images/iylogo.png"> -->
+<link rel="icon" type="image/png" href="/assets/images/iylogo.png">
 
 
 </head>
@@ -23,7 +24,7 @@
         <div class="sidebar-brand">
             <span class="brand-icon"><i class="bi bi-bank2"></i></span>
             <div>
-                <div class="brand-title">Loan Management</div>
+                <div class="brand-title">IY-Loan-Management</div>
             </div>
         </div>
 

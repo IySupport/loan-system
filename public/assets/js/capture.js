@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const surnameInput   = document.getElementById('surnameInput');
     const accInput        = document.getElementById('accountNumberInput');
     const phoneInput     = document.getElementById('phoneInput');
+    const workplaceNameInput = document.getElementById('workplaceNameInput');
+    const workContactInput   = document.getElementById('workContactInput');
     const hint           = document.getElementById('clientLookupHint');
     const banner         = document.getElementById('clientFoundBanner');
     const loanCountBox   = document.getElementById('loanCountDisplay');
@@ -128,6 +130,10 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
                     phoneInput.value   = data.client.phone || '';
                     loanCountBox.value = data.next_loan_count;
                     groupBox.value     = groupLabel(data.group, data.next_loan_count);
+                    // Prefill from their most recent loan as a convenience,
+                    // but don't clobber anything the admin already typed.
+                    if (!workplaceNameInput.value) workplaceNameInput.value = data.last_workplace_name || '';
+                    if (!workContactInput.value)   workContactInput.value   = data.last_work_contact || '';
                 } else {
                     hint.textContent = 'New client — please fill in the details below.';
                     banner.classList.add('d-none');

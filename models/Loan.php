@@ -3,7 +3,7 @@
 class Loan extends Model
 {
     protected string $table = 'loans';
-
+//findOrCreate()
     // -------------------------------------------------------------
     // Reference number generation: LN-YYYYMMDD-0001 (resets daily)
     //report_status
@@ -35,13 +35,13 @@ class Loan extends Model
             if ($ownTransaction) {
                     $this->db->commit();
                 }
-        } catch (Exception $e) {
-            // $this->db->rollBack();
-            if ($ownTransaction && $this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-            throw $e;
-        }
+    } catch (Throwable $e) {
+    if ($ownTransaction && $this->db->inTransaction()) {
+        $this->db->rollBack();
+    }
+
+    throw $e;
+}
         $seq = str_pad((string) $row['last_value'], 4, '0', STR_PAD_LEFT);
         return 'LN-' . date('Ymd') . '-' . $seq;
     }
@@ -96,13 +96,40 @@ class Loan extends Model
             // generated columns computed by Postgres from `amount` (see
             // database/migration_workplace_repayment.sql), so the admin
             // can never set or override them.
-            $this->query(
+            // $this->query(
+            //     "INSERT INTO loans
+            //         (reference_number, client_id, branch_id, loan_status_id, repayment_status_id,
+            //          amount, workplace_name, work_contact, action_date, notes, created_by, created_at)
+            //      VALUES
+            //         (:reference_number, :client_id, :branch_id, :loan_status_id, :repayment_status_id,
+            //          :amount, :workplace_name, :work_contact, :action_date, :notes, :created_by, :date_loaded)",
+            //     [
+            //         'reference_number'    => $reference,
+            //         'client_id'           => $client['id'],
+            //         'branch_id'           => $d['branch_id'],
+            //         'loan_status_id'      => $d['loan_status_id'],
+            //         'repayment_status_id' => $d['repayment_status_id'],
+            //         'amount'              => $d['amount'],
+            //         'workplace_name'      => $d['workplace_name'] ?? null,
+            //         'work_contact'        => $d['work_contact'] ?? null,
+            //         'action_date'         => $d['action_date'],
+            //         'notes'               => $d['notes'] ?? null,
+            //         'created_by'          => $d['created_by'] ?? null,
+            //         'date_loaded'         => $dateLoaded,
+            //     ]
+            // );
+
+            // $loanId = (int) $this->db->lastInsertId('loans_id_seq');
+            $stmt = $this->query(
                 "INSERT INTO loans
-                    (reference_number, client_id, branch_id, loan_status_id, repayment_status_id,
-                     amount, workplace_name, work_contact, action_date, notes, created_by, created_at)
-                 VALUES
-                    (:reference_number, :client_id, :branch_id, :loan_status_id, :repayment_status_id,
-                     :amount, :workplace_name, :work_contact, :action_date, :notes, :created_by, :date_loaded)",
+                    (reference_number, client_id, branch_id, loan_status_id,
+                    repayment_status_id, amount, workplace_name, work_contact,
+                    action_date, notes, created_by, created_at)
+                VALUES
+                    (:reference_number, :client_id, :branch_id, :loan_status_id,
+                    :repayment_status_id, :amount, :workplace_name, :work_contact,
+                    :action_date, :notes, :created_by, :date_loaded)
+                RETURNING id",
                 [
                     'reference_number'    => $reference,
                     'client_id'           => $client['id'],
@@ -110,16 +137,16 @@ class Loan extends Model
                     'loan_status_id'      => $d['loan_status_id'],
                     'repayment_status_id' => $d['repayment_status_id'],
                     'amount'              => $d['amount'],
-                    'workplace_name'      => $d['workplace_name'] ?? null,
-                    'work_contact'        => $d['work_contact'] ?? null,
+                    'workplace_name'      => $d['workplace_name'] ?: null,
+                    'work_contact'        => $d['work_contact'] ?: null,
                     'action_date'         => $d['action_date'],
-                    'notes'               => $d['notes'] ?? null,
+                    'notes'               => $d['notes'] ?: null,
                     'created_by'          => $d['created_by'] ?? null,
                     'date_loaded'         => $dateLoaded,
                 ]
             );
 
-            $loanId = (int) $this->db->lastInsertId('loans_id_seq');
+            $loanId = (int) $stmt->fetchColumn();
             $this->db->commit();
 
             $loanCount = (new Client())->loanCount($client['id']);
@@ -131,10 +158,24 @@ class Loan extends Model
                 'loan_count'       => $loanCount,
                 'group'            => Client::groupForCount($loanCount),
             ];
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            throw $e;
-        }
+        // } catch (Exception $e) {
+        //     $this->db->rollBack();
+        //     throw $e;
+        // }
+        } catch (Throwable $e) {
+    if ($this->db->inTransaction()) {
+        $this->db->rollBack();
+    }
+
+    error_log(
+        'Loan::create original error: ' .
+        $e->getMessage() .
+        ' in ' . $e->getFile() .
+        ':' . $e->getLine()
+    );
+
+    throw $e;
+}
     }
 
     // public function update(int $id, array $d): bool

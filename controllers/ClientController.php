@@ -3,6 +3,38 @@
 class ClientController extends Controller
 {
     // AJAX: GET /clients/lookup?id_number=xxxx
+    // public function lookup(): void
+    // {
+    //     Auth::requireLogin();
+    //     $idNumber = trim((string) $this->input('id_number', ''));
+    //     if ($idNumber === '') {
+    //         $this->json(['found' => false]);
+    //     }
+
+    //     $clientModel = new Client();
+    //     $client = $clientModel->findByIdNumber($idNumber);
+
+    //     if (!$client) {
+    //         $this->json(['found' => false]);
+    //     }
+
+    //     $loanCount = $clientModel->loanCount($client['id']);
+    //     $this->json([
+    //         'found'  => true,
+    //         'client' => [
+    //             'id'             => $client['id'],
+    //             'name'           => $client['name'],
+    //             'surname'        => $client['surname'],
+    //             'id_number'      => $client['id_number'],
+    //             'account_number' => $client['account_number'],
+    //             'phone'          => $client['phone'],
+    //         ],
+    //         'previous_loan_count' => $loanCount,
+    //         'next_loan_count'     => $loanCount + 1,
+    //         'group'               => Client::groupForCount($loanCount + 1),
+    //     ]);
+    // }
+// AJAX: GET /clients/lookup?id_number=xxxx
     public function lookup(): void
     {
         Auth::requireLogin();
@@ -19,6 +51,12 @@ class ClientController extends Controller
         }
 
         $loanCount = $clientModel->loanCount($client['id']);
+
+        // Prefill Workplace Name/Contact from the client's most recent
+        // loan as a convenience - it's still an editable field on the
+        // form since employment can change between loans.
+        $lastLoan = (new Loan())->forClient($client['id'])[0] ?? null;
+
         $this->json([
             'found'  => true,
             'client' => [
@@ -32,9 +70,10 @@ class ClientController extends Controller
             'previous_loan_count' => $loanCount,
             'next_loan_count'     => $loanCount + 1,
             'group'               => Client::groupForCount($loanCount + 1),
+            'last_workplace_name' => $lastLoan['workplace_name'] ?? '',
+            'last_work_contact'   => $lastLoan['work_contact'] ?? '',
         ]);
     }
-
     // ---------------------------------------------------------------
     // Admin: Clients page (search, view, update, delete)
     // ---------------------------------------------------------------
