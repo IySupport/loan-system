@@ -148,13 +148,37 @@ $(function () {
     $('#applyBulkRepaymentStatusBtn').on('click', function () {
         postBulk('/loans/bulk-repayment-status', { repayment_status_id: $('#bulkRepaymentStatusSelect').val() }, '#changeRepaymentStatusModal');
     });
-    $('#deleteSelectedBtn').on('click', function () {
-        if (selectedIds.size === 0) { Toast.warning('Please select at least one row.'); return; }
+    // $('#deleteSelectedBtn').on('click', function () {
+    //     if (selectedIds.size === 0) { Toast.warning('Please select at least one row.'); return; }
 
-        if (!Toast.confirm('Delete ' + selectedIds.size + ' selected loan(s)? This cannot be undone.')) return;
-        postBulk('/loans/bulk-delete', {}, null);
-    });
+    //     const ok = await Toast.confirm('Delete ' + selectedIds.size + ' selected loan(s)? This cannot be undone.');
 
+    //     if (ok) {
+    //         postBulk('/loans/bulk-delete', {}, null);
+    //     }
+    //     else {
+    //         Toast.info('Delete cancelled.');
+    //         return;
+    //     }
+    // });
+$('#deleteSelectedBtn').on('click', async function () {
+    if (selectedIds.size === 0) {
+        Toast.warning('Please select at least one row.');
+        return;
+    }
+
+    const confirmed = await Toast.confirm(
+        `Delete ${selectedIds.size} selected loan(s)? This cannot be undone.`
+    );
+
+    // Only delete when the result is exactly true
+    if (confirmed !== true) {
+        Toast.info('Delete cancelled.');
+        return;
+    }
+
+    await postBulk('/loans/bulk-delete', {}, null);
+});
     function postBulk(path, extra, modalSelector) {
         if (selectedIds.size === 0) { Toast.warning('Please select at least one row.'); return; }
         const payload = Object.assign({ csrf_token: window.CSRF_TOKEN, ids: JSON.stringify(Array.from(selectedIds)) }, extra);
