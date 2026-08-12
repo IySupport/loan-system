@@ -22,7 +22,7 @@
 
                 <div id="clientFoundBanner" class="client-banner d-none">
                     <i class="bi bi-check-circle-fill"></i>
-                    <span>Existing client found — details auto-filled below.</span>
+                    <span>Existing client found - details auto-filled below.</span>
                 </div>
 
                 <div class="row g-3">

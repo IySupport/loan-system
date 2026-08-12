@@ -80,7 +80,8 @@ $(function () {
             { data: 'loan_group', render: (d) => `<span class="group-pill ${groupBadgeClass(d)}">${d}</span>` },
             { data: 'status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
             { data: 'repayment_status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
-            { data: 'action_date', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
+            // { data: 'action_date', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
+            { data: 'action_date', render: (d) => fmtDate(d) },
             { data: 'date_loaded', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
             {
                 data: 'id', orderable: false, className: 'text-nowrap',
@@ -149,7 +150,8 @@ $(function () {
     });
     $('#deleteSelectedBtn').on('click', function () {
         if (selectedIds.size === 0) { Toast.warning('Please select at least one row.'); return; }
-        if (!confirm('Delete ' + selectedIds.size + ' selected loan(s)? This cannot be undone.')) return;
+
+        if (!Toast.confirm('Delete ' + selectedIds.size + ' selected loan(s)? This cannot be undone.')) return;
         postBulk('/loans/bulk-delete', {}, null);
     });
 

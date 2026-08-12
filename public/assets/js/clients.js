@@ -80,7 +80,7 @@ $(function () {
                     <td>${fmtMoney(l.amount_due)}</td>
                     <td><span class="badge-status ${statusBadgeClass(l.status)}">${l.status}</span></td>
                     <td><span class="badge-status ${statusBadgeClass(l.repayment_status)}">${l.repayment_status}</span></td>
-                    <td>${l.action_date ? new Date(l.action_date).toLocaleDateString('en-ZA') : ''}</td>
+                    <td>${fmtDate(l.action_date)}</td>
                 </tr>`);
             });
             if (res.loans.length === 0) {

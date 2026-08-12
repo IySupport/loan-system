@@ -11,32 +11,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const loanCountBox   = document.getElementById('loanCountDisplay');
     const groupBox       = document.getElementById('groupDisplay');
     const form           = document.getElementById('captureLoanForm');
-
-    // const branchSelect   = form.querySelector('[name="branch_id"]');
-    // const actionDateInput = form.querySelector('[name="action_date"]');
-    // const amountInput     = form.querySelector('[name="amount"]');
-    // const budgetBox       = document.getElementById('budgetStatusBox');
-
-    // function refreshBudgetStatus() {
-    //     const branchId = branchSelect.value;
-    //     if (!branchId) { budgetBox.classList.add('d-none'); return; }
-
-    //     const actionDate = actionDateInput.value || new Date().toISOString().slice(0, 10);
-        // const month = actionDate.slice(0, 7) + '-01'; // YYYY-MM-01
-        // const month = actionDate.slice(0, 7) + '-01'; // YYYY-MM-01
-const branchSelect    = form.querySelector('[name="branch_id"]');
+    const branchSelect    = form.querySelector('[name="branch_id"]');
     const dateLoadedInput = form.querySelector('[name="date_loaded"]');
     const amountInput     = form.querySelector('[name="amount"]');
     const budgetBox       = document.getElementById('budgetStatusBox');
     const interestDisplay = document.getElementById('interestAmountDisplay');
     const amountDueDisplay = document.getElementById('amountDueDisplay');
 
-    // Interest Amount / Amount Due are read-only, system-calculated fields:
-    //   Interest Amount = Loan Amount x 40%
-    //   Amount Due      = Loan Amount + Interest Amount
-    // The authoritative figures are always computed server-side (generated
-    // DB columns) - this listener just gives instant visual feedback as
-    // the admin types, per the "must update instantly" requirement.
     function refreshCalculatedFigures() {
         const amount = parseFloat(amountInput.value) || 0;
         const interest = amount * 0.40;
@@ -49,11 +30,8 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
         const branchId = branchSelect.value;
         if (!branchId) { budgetBox.classList.add('d-none'); return; }
 
-        // Budget month comes from Date Loaded (when the loan was actually
-        // captured), NOT Action Date (the client's repayment due date) -
-        // these track different things.
         const dateLoaded = dateLoadedInput.value || new Date().toISOString().slice(0, 10);
-        const month = dateLoaded.slice(0, 7) + '-01'; // YYYY-MM-01
+        const month = dateLoaded.slice(0, 7) + '-01'; 
 
         fetch(window.APP_URL + '/budgets/status?branch_id=' + encodeURIComponent(branchId) + '&month=' + encodeURIComponent(month))
             .then(r => r.json())
@@ -88,8 +66,6 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
 
     branchSelect.addEventListener('change', refreshBudgetStatus);
     dateLoadedInput.addEventListener('change', refreshBudgetStatus);
-    // branchSelect.addEventListener('change', refreshBudgetStatus);
-    // actionDateInput.addEventListener('change', refreshBudgetStatus);
     amountInput.addEventListener('input', function () {
         const remainingText = document.getElementById('budgetRemaining').textContent;
         const remaining = parseFloat(remainingText.replace(/[^0-9.-]/g, '')) || 0;
@@ -130,13 +106,8 @@ const branchSelect    = form.querySelector('[name="branch_id"]');
                     phoneInput.value   = data.client.phone || '';
                     loanCountBox.value = data.next_loan_count;
                     groupBox.value     = groupLabel(data.group, data.next_loan_count);
-                    // Prefill from their most recent loan as a convenience,
-                    // but don't clobber anything the admin already typed.
-                    alert('Work: ' + workplaceNameInput.value  + ' ' + workContactInput.value + '\n' );
                     if (!workplaceNameInput.value) workplaceNameInput.value = data.last_workplace_name || '';
                     if (!workContactInput.value)   workContactInput.value   = data.last_work_contact || '';
-
-                    alert('Work: ' + workplaceNameInput.value  + ' ' + workContactInput.value + '\n' );
                 } else {
                     hint.textContent = 'New client — please fill in the details below.';
                     banner.classList.add('d-none');
