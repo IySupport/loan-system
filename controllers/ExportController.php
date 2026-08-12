@@ -9,7 +9,7 @@ class ExportController extends Controller
 {
     private const HEADERS = [
         'Reference Number', 'Name', 'Surname', 'ID Number', 'Account Number',
-        'Amount', 'Branch', 'Loan Count', 'Group', 'Status', 'Report Status',
+        'Amount', 'Branch', 'Loan Count', 'Group', 'Status', 'Repayment Status',
         'Action Date', 'Date Loaded',
     ];
 
@@ -49,7 +49,7 @@ class ExportController extends Controller
                 (int) $row['loan_count'],
                 $row['loan_group'],
                 $row['status'],
-                $row['report_status'],
+                $row['repayment_status'],
                 $row['action_date'],
                 date('Y-m-d', strtotime($row['date_loaded'])),
             ], null, "A{$r}");

@@ -3,17 +3,11 @@
 class Loan extends Model
 {
     protected string $table = 'loans';
-//findOrCreate()
-    // -------------------------------------------------------------
-    // Reference number generation: LN-YYYYMMDD-0001 (resets daily)
-    //report_status
-    // -------------------------------------------------------------
+
     public function nextReferenceNumber(): string
     {
         $today = date('Y-m-d');
 
-        // $this->db->beginTransaction();
-        // try {
         $ownTransaction = !$this->db->inTransaction();
 
         if ($ownTransaction) {
@@ -31,7 +25,6 @@ class Loan extends Model
                  WHERE counter_date = :d RETURNING last_value",
                 ['d' => $today]
             )->fetch();
-            // $this->db->commit();
             if ($ownTransaction) {
                     $this->db->commit();
                 }
@@ -46,13 +39,10 @@ class Loan extends Model
         return 'LN-' . date('Ymd') . '-' . $seq;
     }
 
-    // -------------------------------------------------------------
-    // Create / Update 
-    // -------------------------------------------------------------
     public function create(array $d): array
     {
         $this->db->beginTransaction();
-         error_log('[TEST 1] Transaction started');
+       
         try {
             $clientModel = new Client();
             $client = $clientModel->findOrCreate([
@@ -62,65 +52,11 @@ class Loan extends Model
                 'account_number' => $d['account_number'] ?? null,
                 'phone'          => $d['phone'] ?? null,
             ]);
-           error_log('[TEST 2] Client ready. ID: ' . $client['id']);
+        
             $reference = $this->nextReferenceNumber();
-
-            // $this->query(
-            //     "INSERT INTO loans
-            //         (reference_number, client_id, branch_id, loan_status_id, repayment_status_id,
-            //          amount, action_date, notes, created_by)
-            //      VALUES
-            //         (:reference_number, :client_id, :branch_id, :loan_status_id, :repayment_status_id,
-            //          :amount, :action_date, :notes, :created_by)",
-            //     [
-            //         'reference_number'    => $reference,
-            //         'client_id'           => $client['id'],
-            //         'branch_id'           => $d['branch_id'],
-            //         'loan_status_id'      => $d['loan_status_id'],
-            //         'repayment_status_id' => $d['repayment_status_id'],
-            //         'amount'              => $d['amount'],
-            //         'action_date'         => $d['action_date'],
-            //         'notes'               => $d['notes'] ?? null,
-            //         'created_by'          => $d['created_by'] ?? null,
-            //     ]
-            // );
- error_log('[TEST 3] Reference generated: ' . $reference);
-
-            // date_loaded drives which month's branch budget this loan counts
-            // against, and must be editable so older loans can be captured
-            // retroactively. It is stored in loans.created_at (aliased as
-            // date_loaded in loan_register_view). Falls back to "now" if not
-            // supplied, so this stays backward compatible.
+      
             $dateLoaded = !empty($d['date_loaded']) ? $d['date_loaded'] : date('Y-m-d');
 
-            // interest_amount / amount_due are NOT inserted here: they are
-            // generated columns computed by Postgres from `amount` (see
-            // database/migration_workplace_repayment.sql), so the admin
-            // can never set or override them.
-            // $this->query(
-            //     "INSERT INTO loans
-            //         (reference_number, client_id, branch_id, loan_status_id, repayment_status_id,
-            //          amount, workplace_name, work_contact, action_date, notes, created_by, created_at)
-            //      VALUES
-            //         (:reference_number, :client_id, :branch_id, :loan_status_id, :repayment_status_id,
-            //          :amount, :workplace_name, :work_contact, :action_date, :notes, :created_by, :date_loaded)",
-            //     [
-            //         'reference_number'    => $reference,
-            //         'client_id'           => $client['id'],
-            //         'branch_id'           => $d['branch_id'],
-            //         'loan_status_id'      => $d['loan_status_id'],
-            //         'repayment_status_id' => $d['repayment_status_id'],
-            //         'amount'              => $d['amount'],
-            //         'workplace_name'      => $d['workplace_name'] ?? null,
-            //         'work_contact'        => $d['work_contact'] ?? null,
-            //         'action_date'         => $d['action_date'],
-            //         'notes'               => $d['notes'] ?? null,
-            //         'created_by'          => $d['created_by'] ?? null,
-            //         'date_loaded'         => $dateLoaded,
-            //     ]
-            // );
-
-            // $loanId = (int) $this->db->lastInsertId('loans_id_seq');
             $stmt = $this->query(
                 "INSERT INTO loans
                     (reference_number, client_id, branch_id, loan_status_id,
@@ -148,9 +84,7 @@ class Loan extends Model
             );
 
             $loanId = (int) $stmt->fetchColumn();
-             error_log('[TEST 4] Loan inserted. ID: ' . $loanId);
             $this->db->commit();
-             error_log('[TEST 5] Transaction committed');
             $loanCount = (new Client())->loanCount($client['id']);
 
             return [
@@ -160,10 +94,6 @@ class Loan extends Model
                 'loan_count'       => $loanCount,
                 'group'            => Client::groupForCount($loanCount),
             ];
-        // } catch (Exception $e) {
-        //     $this->db->rollBack();
-        //     throw $e;
-        // }
         } catch (Throwable $e) {
     if ($this->db->inTransaction()) {
         $this->db->rollBack();
@@ -179,30 +109,8 @@ class Loan extends Model
     throw $e;
 }
     }
-
-    // public function update(int $id, array $d): bool
-    // {
-    //     return $this->query(
-    //         "UPDATE loans SET branch_id = :branch_id, loan_status_id = :loan_status_id,
-    //             repayment_status_id = :repayment_status_id, amount = :amount, action_date = :action_date,
-    //             notes = :notes, updated_at = NOW()
-    //          WHERE id = :id",
-    //         [
-    //             'branch_id'           => $d['branch_id'],
-    //             'loan_status_id'      => $d['loan_status_id'],
-    //             'repayment_status_id' => $d['repayment_status_id'],
-    //             'amount'              => $d['amount'],
-    //             'action_date'         => $d['action_date'],
-    //             'notes'               => $d['notes'] ?? null,
-    //             'id'                  => $id,
-    //         ]
-    //     )->rowCount() >= 0;
-    // }
 public function update(int $id, array $d): bool
     {
-        // interest_amount / amount_due are never written here - they are
-        // generated columns and recompute automatically the moment
-        // `amount` changes below.
         return $this->query(
             "UPDATE loans SET branch_id = :branch_id, loan_status_id = :loan_status_id,
                 repayment_status_id = :repayment_status_id, amount = :amount,
@@ -231,10 +139,6 @@ public function update(int $id, array $d): bool
         return $row ?: null;
     }
 
-    // -------------------------------------------------------------
-    // Loans for a single client (used by the Clients admin page to show
-    // loan history in the View Client modal)
-    // -------------------------------------------------------------
     public function forClient(int $clientId): array
     {
         return $this->query(
@@ -243,10 +147,6 @@ public function update(int $id, array $d): bool
         )->fetchAll();
     }
 
-    // -------------------------------------------------------------
-    // Register listing (server-side, used by DataTables + Reports + Export)
-    // Builds WHERE clause from an associative $filters array.
-    // -------------------------------------------------------------
     public function buildFilterClause(array $filters): array
     {
         $where  = [];
@@ -353,9 +253,6 @@ public function update(int $id, array $d): bool
         return $this->query("SELECT * FROM loan_register_view {$whereSql} ORDER BY date_loaded DESC", $params)->fetchAll();
     }
 
-    // -------------------------------------------------------------
-    // Bulk operations
-    // -------------------------------------------------------------
     public function bulkUpdateStatus(array $ids, int $statusId): int
     {
         return $this->bulkUpdate($ids, 'loan_status_id', $statusId);
@@ -394,9 +291,6 @@ public function update(int $id, array $d): bool
         return $this->query($sql, $params)->rowCount();
     }
 
-    // -------------------------------------------------------------
-    // Dashboard aggregates
-    // -------------------------------------------------------------
     public function kpis(): array
     {
         $row = $this->query(
@@ -442,13 +336,6 @@ public function update(int $id, array $d): bool
         )->fetchAll();
     }
 
-    // public function recentActivity(int $limit = 8): array
-    // {
-    //     return $this->query(
-    //         "SELECT reference_number, name, surname, status, amount, date_loaded
-    //          FROM loan_register_view ORDER BY date_loaded DESC LIMIT :limit"
-    //     )->fetchAll();
-    // }
 public function recentActivity(int $limit = 8): array
 {
     return $this->query(
@@ -459,17 +346,7 @@ public function recentActivity(int $limit = 8): array
         ['limit' => $limit]
     )->fetchAll();
 }
-
-  // -------------------------------------------------------------
-    // Budget tracking (amount spent per branch for a given month)
-    //
-    // "Spent" = money that has actually left the branch. Under the loan
-    // lifecycle (Pending Review -> Approved -> Disbursed -> Closed), funds
-    // only leave the branch once a loan reaches Disbursed (or later,
-    // Closed). A Pending Review or Approved loan hasn't paid out yet and
-    // must NOT count against the branch's monthly budget; Rejected loans
-    // never paid out at all.
-    // -------------------------------------------------------------
+    
     private const DISBURSED_STATUSES = ['Disbursed', 'Closed'];
 
     public function spentByBranchForMonth(string $month): array
@@ -498,11 +375,6 @@ public function recentActivity(int $limit = 8): array
         )->fetch()['spent'];
     }
 
-    // -------------------------------------------------------------
-    // Payments Due Today (dashboard alert + reports breakdown)
-    // "Due today" = action_date is today AND repayment status isn't
-    // already 'Paid'.
-    // -------------------------------------------------------------
     public function paymentsDueTodayCount(): int
     {
         return (int) $this->query(
@@ -530,9 +402,6 @@ public function recentActivity(int $limit = 8): array
         return ['by_branch' => $byBranch, 'grand_total' => $grandTotal];
     }
 
-    // -------------------------------------------------------------
-    // Reports screen
-    // -------------------------------------------------------------
       public function reportSummary(array $filters): array
     {
         [$whereSql, $params] = $this->buildFilterClause($filters);

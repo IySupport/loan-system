@@ -44,21 +44,6 @@ class Client extends Model
 
     return (int) $stmt->fetchColumn();
 }
-    // public function create(array $d): int
-    // {
-    //     $this->query(
-    //         "INSERT INTO clients (name, surname, id_number, account_number, phone)
-    //          VALUES (:name, :surname, :id_number, :account_number, :phone)",
-    //         [
-    //             'name'           => $d['name'],
-    //             'surname'        => $d['surname'],
-    //             'id_number'      => $d['id_number'],
-    //             'account_number' => $d['account_number'] ?? null,
-    //             'phone'          => $d['phone'] ?? null,
-    //         ]
-    //     );
-    //     return (int) $this->db->lastInsertId('clients_id_seq');
-    // }
 
     public function update(int $id, array $d): bool
     {
@@ -82,9 +67,6 @@ class Client extends Model
         return (int) $this->query($sql, $params)->fetch()['c'] > 0;
     }
 
-    // -------------------------------------------------------------
-    // Admin: Clients search/list page (server-side, used by DataTables)
-    // -------------------------------------------------------------
     public function searchList(array $filters, string $orderBy = 'created_at', string $orderDir = 'DESC', int $limit = 25, int $offset = 0): array
     {
         $where  = [];
@@ -124,29 +106,11 @@ class Client extends Model
         return ['data' => $stmt->fetchAll(), 'total' => $total];
     }
 
-    /**
-     * A client can only be deleted if nothing in the database still
-     * references it (currently: loans.client_id). Returns the number of
-     * referencing loans - 0 means it's safe to delete.
-     */
     public function referencingLoanCount(int $clientId): int
     {
         return $this->loanCount($clientId);
     }
 
-    /**
-     * Find existing client by ID number, or create a new one.
-     * Returns the client's row plus loan_count (before the new loan is added) and group.
-     */
-    // public function findOrCreate(array $d): array
-    // {
-    //     $existing = $this->findByIdNumber($d['id_number']);
-    //     if ($existing) {
-    //         return $existing;
-    //     }
-    //     $newId = $this->create($d);
-    //     return $this->find($newId);
-    // }
     public function findOrCreate(array $d): array
 {
     $stmt = $this->query(

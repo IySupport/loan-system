@@ -2,7 +2,7 @@
 
 <div class="d-flex justify-content-end mb-3">
     <a href="<?= APP_URL ?>/loans/register" class="btn btn-outline-brand btn-sm">
-        <i class="bi bi-arrow-left"></i> Back to Register and Monituring
+        <i class="bi bi-arrow-left"></i> Back to Register
     </a>
 </div>
 
