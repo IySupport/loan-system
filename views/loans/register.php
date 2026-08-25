@@ -92,6 +92,7 @@
                     <th>Surname</th>
                     <th>ID Number</th>
                     <th>Account No.</th>
+                   <th>Bank Name</th>
                     <th>Amount</th>
                     <th>Branch</th>
                     <th>Workplace</th>
@@ -183,6 +184,14 @@
                 <div class="col-md-6">
                     <label class="form-label">Work Contact</label>
                     <input type="text" class="form-control" name="work_contact" id="edit_work_contact">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Bank *</label>
+                    <select class="form-select" name="bank_id" id="edit_bank_id" required>
+                        <option value="">Select bank</option>
+                        <?php foreach ($banks as $bk): ?><option value="<?= $bk['id'] ?>"><?= htmlspecialchars($bk['bank_name']) ?> (<?= htmlspecialchars($bk['branch_code']) ?>)</option><?php endforeach; ?>
+                    </select>
+                    <div class="invalid-feedback" data-error-for="bank_id"></div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Interest Amount <span class="text-muted fw-normal">(auto, 40%)</span></label>

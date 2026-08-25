@@ -52,7 +52,7 @@
         <div class="table-responsive">
             <table class="table table-clean align-middle mb-0">
                 <thead>
-                    <tr><th>Ref No.</th><th>Branch</th><th>Amount</th><th>Amount Due</th><th>Loan Status</th><th>Repayment Status</th><th>Action Date</th></tr>
+                    <tr><th>Ref No.</th><th>Branch</th><th>Bank</th><th>Amount</th><th>Amount Due</th><th>Loan Status</th><th>Repayment Status</th><th>Action Date</th></tr>
                 </thead>
                 <tbody id="view_loans_tbody"></tbody>
             </table>

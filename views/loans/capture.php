@@ -12,14 +12,19 @@
         <div class="col-lg-6">
             <div class="panel-card h-100">
                 <h6 class="panel-title"><i class="bi bi-person-vcard-fill me-1"></i> Client Information</h6>
-
-                <div class="mb-3">
+<div class="row g-3">
+                <!-- <div class="mb-3"> -->
+                      <div class="col-md-6">
                     <label class="form-label">ID Number *</label>
                     <input type="text" class="form-control" name="id_number" id="idNumberInput" placeholder="Enter client ID number" required>
                     <div id="clientLookupHint" class="form-text"></div>
                     <div class="invalid-feedback" data-error-for="id_number"></div>
                 </div>
-
+                <div class="col-md-6">
+                        <label class="form-label">Phone Number</label>
+                        <input type="text" class="form-control" name="phone" id="phoneInput" placeholder="071 123 4567">
+                    </div>
+</div>
                 <div id="clientFoundBanner" class="client-banner d-none">
                     <i class="bi bi-check-circle-fill"></i>
                     <span>Existing client found - details auto-filled below.</span>
@@ -41,8 +46,14 @@
                         <input type="text" class="form-control" name="account_number" id="accountNumberInput">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Phone Number</label>
-                        <input type="text" class="form-control" name="phone" id="phoneInput" placeholder="071 123 4567">
+                        <label class="form-label">Bank *</label>
+                        <select class="form-select" name="bank_id" required>
+                            <option value="">Select bank</option>
+                            <?php foreach ($banks as $bk): ?>
+                                <option value="<?= $bk['id'] ?>"><?= htmlspecialchars($bk['bank_name']) ?> (<?= htmlspecialchars($bk['branch_code']) ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="invalid-feedback" data-error-for="bank_id"></div>
                     </div>
                 </div>
             </div>
@@ -85,6 +96,7 @@
                         </select>
                         <div class="invalid-feedback" data-error-for="branch_id"></div>
                     </div>
+
                     <div class="col-md-4">
                         <label class="form-label">Action Date * <span class="text-muted fw-normal">(client's expected payment date)</span></label>
                         <input type="date" class="form-control" name="action_date" value="<?= date('Y-m-d') ?>" required>

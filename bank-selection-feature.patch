@@ -1,0 +1,385 @@
+diff --git a/controllers/LoanController.php b/controllers/LoanController.php
+index c380319..4586add 100644
+--- a/controllers/LoanController.php
++++ b/controllers/LoanController.php
+@@ -8,6 +8,7 @@ class LoanController extends Controller
+             'branches'          => (new Branch())->activeBranches(),
+             'loanStatuses'      => (new LoanStatus())->all('id ASC'),
+             'repaymentStatuses' => (new RepaymentStatus())->all('id ASC'),
++            'banks'             => (new Bank())->all(),
+         ];
+     }
+ 
+@@ -41,6 +42,7 @@ class LoanController extends Controller
+                 'branch_id'           => (int) $_POST['branch_id'],
+                 'loan_status_id'      => (int) $_POST['loan_status_id'],
+                 'repayment_status_id' => (int) $_POST['repayment_status_id'],
++                'bank_id'             => (int) $_POST['bank_id'],
+                 'amount'              => (float) $_POST['amount'],
+                 'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
+                 'work_contact'        => trim($_POST['work_contact'] ?? ''),
+@@ -67,6 +69,7 @@ class LoanController extends Controller
+         if (empty($d['branch_id']))              $errors['branch_id'] = 'Branch is required.';
+         if (empty($d['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
+         if (empty($d['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
++        if (empty($d['bank_id']))                $errors['bank_id'] = 'Bank is required.';
+         if (empty($d['action_date']))            $errors['action_date'] = 'Action Date is required.';
+         if (empty($d['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
+         return $errors;
+@@ -143,6 +146,7 @@ class LoanController extends Controller
+         if (empty($_POST['branch_id']))              $errors['branch_id'] = 'Branch is required.';
+         if (empty($_POST['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
+         if (empty($_POST['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
++        if (empty($_POST['bank_id']))                $errors['bank_id'] = 'Bank is required.';
+         if (empty($_POST['action_date']))            $errors['action_date'] = 'Action Date is required.';
+         if (empty($_POST['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
+         if (!empty($errors)) $this->json(['success' => false, 'errors' => $errors], 422);
+@@ -151,6 +155,7 @@ class LoanController extends Controller
+             'branch_id'           => (int) $_POST['branch_id'],
+             'loan_status_id'      => (int) $_POST['loan_status_id'],
+             'repayment_status_id' => (int) $_POST['repayment_status_id'],
++            'bank_id'             => (int) $_POST['bank_id'],
+             'amount'              => (float) $_POST['amount'],
+             'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
+             'work_contact'        => trim($_POST['work_contact'] ?? ''),
+diff --git a/database/migration_bank_selection.sql b/database/migration_bank_selection.sql
+new file mode 100644
+index 0000000..55d42a1
+--- /dev/null
++++ b/database/migration_bank_selection.sql
+@@ -0,0 +1,93 @@
++-- =====================================================================
++-- Migration: Bank selection on loans
++-- Run this once on your existing (Neon) database:
++--   psql "$DATABASE_URL" -f database/migration_bank_selection.sql
++-- (or paste into the Neon SQL Editor)
++--
++-- bank_id is left NULLABLE on purpose: your loans table already has
++-- live rows with no bank recorded, and there's no real bank value to
++-- backfill them with. New loans going forward are required to pick a
++-- bank at the application level (form validation), so bank_id will
++-- always be set for anything created from now on - existing loans will
++-- just show "Not specified" until edited.
++-- =====================================================================
++
++CREATE TABLE IF NOT EXISTS banks (
++    id            SERIAL PRIMARY KEY,
++    bank_name     VARCHAR(100) NOT NULL UNIQUE,
++    branch_code   VARCHAR(10)  NOT NULL
++);
++
++INSERT INTO banks (bank_name, branch_code) VALUES
++('Absa Bank', '632005'),
++('Access Bank South Africa', '410506'),
++('African Bank', '430000'),
++('Bank Zero', '888000'),
++('Bidvest Bank', '462005'),
++('Capitec Bank', '470010'),
++('Discovery Bank', '679000'),
++('First National Bank (FNB)', '250655'),
++('Grindrod Bank', '584000'),
++('Investec Bank', '580105'),
++('Mercantile Bank', '450905'),
++('Nedbank', '198765'),
++('Postbank (SAPO)', '460005'),
++('Sasfin Bank', '683000'),
++('Standard Bank', '051001'),
++('TymeBank', '678910'),
++('Ubank', '431010')
++ON CONFLICT (bank_name) DO NOTHING;
++
++ALTER TABLE loans ADD COLUMN IF NOT EXISTS bank_id INTEGER REFERENCES banks(id);
++CREATE INDEX IF NOT EXISTS idx_loans_bank ON loans(bank_id);
++
++-- Rebuild the register view to expose the bank name/code. New columns
++-- appended at the end - Postgres requires CREATE OR REPLACE VIEW to
++-- preserve the existing column order/positions. LEFT JOIN because
++-- bank_id can be NULL on existing loans.
++CREATE OR REPLACE VIEW loan_register_view AS
++SELECT
++    l.id,
++    l.reference_number,
++    c.id            AS client_id,
++    c.name,
++    c.surname,
++    c.id_number,
++    c.account_number,
++    c.phone,
++    l.amount,
++    b.id            AS branch_id,
++    b.branch_name,
++    lc.loan_count,
++    CASE
++        WHEN lc.loan_count BETWEEN 1 AND 3 THEN 'Group 1'
++        WHEN lc.loan_count BETWEEN 4 AND 8 THEN 'Group 2'
++        ELSE 'Group 3'
++    END AS loan_group,
++    l.loan_status_id,
++    ls.status_name  AS status,
++    l.repayment_status_id,
++    rs.status_name  AS repayment_status,
++    l.action_date,
++    l.created_at    AS date_loaded,
++    l.updated_at,
++    l.notes,
++    l.created_by,
++    l.workplace_name,
++    l.work_contact,
++    l.interest_amount,
++    l.amount_due,
++    l.bank_id,
++    bk.bank_name,
++    bk.branch_code  AS bank_branch_code
++FROM loans l
++JOIN clients c              ON c.id = l.client_id
++JOIN branches b              ON b.id = l.branch_id
++JOIN loan_statuses ls         ON ls.id = l.loan_status_id
++JOIN repayment_statuses rs    ON rs.id = l.repayment_status_id
++LEFT JOIN banks bk            ON bk.id = l.bank_id
++JOIN (
++    SELECT client_id, COUNT(*) AS loan_count
++    FROM loans
++    GROUP BY client_id
++) lc ON lc.client_id = l.client_id;
+diff --git a/database/schema.sql b/database/schema.sql
+index da60088..6504a9c 100644
+--- a/database/schema.sql
++++ b/database/schema.sql
+@@ -53,6 +53,15 @@ CREATE TABLE repayment_statuses (
+     status_name     VARCHAR(50) NOT NULL UNIQUE
+ );
+ 
++-- ---------------------------------------------------------------------
++-- Banks (lookup) - South African banks + universal branch codes
++-- ---------------------------------------------------------------------
++CREATE TABLE banks (
++    id              SERIAL PRIMARY KEY,
++    bank_name       VARCHAR(100) NOT NULL UNIQUE,
++    branch_code     VARCHAR(10)  NOT NULL
++);
++
+ -- ---------------------------------------------------------------------
+ -- Clients (unique per ID Number)
+ -- ---------------------------------------------------------------------
+@@ -89,6 +98,7 @@ CREATE TABLE loans (
+     -- Workplace info: where the client works, for repayment follow-up.
+     workplace_name        VARCHAR(150),
+     work_contact           VARCHAR(30),
++    bank_id                INTEGER REFERENCES banks(id),
+     -- Interest / Amount Due are DERIVED, never entered manually:
+     --   interest_amount = amount * 40%
+     --   amount_due      = amount + interest_amount
+@@ -109,6 +119,7 @@ CREATE INDEX idx_loans_repayment  ON loans(repayment_status_id);
+ CREATE INDEX idx_loans_created    ON loans(created_at);
+ CREATE INDEX idx_loans_workplace  ON loans(workplace_name);
+ CREATE INDEX idx_loans_action_date ON loans(action_date);
++CREATE INDEX idx_loans_bank       ON loans(bank_id);
+ 
+ -- ---------------------------------------------------------------------
+ -- View: computes loan_count and group DYNAMICALLY (never stored)
+@@ -144,12 +155,16 @@ SELECT
+     l.workplace_name,
+     l.work_contact,
+     l.interest_amount,
+-    l.amount_due
++    l.amount_due,
++    l.bank_id,
++    bk.bank_name,
++    bk.branch_code  AS bank_branch_code
+ FROM loans l
+ JOIN clients c              ON c.id = l.client_id
+ JOIN branches b              ON b.id = l.branch_id
+ JOIN loan_statuses ls         ON ls.id = l.loan_status_id
+ JOIN repayment_statuses rs    ON rs.id = l.repayment_status_id
++LEFT JOIN banks bk            ON bk.id = l.bank_id
+ JOIN (
+     SELECT client_id, COUNT(*) AS loan_count
+     FROM loans
+diff --git a/database/seed.sql b/database/seed.sql
+index 55e9b16..76d11df 100644
+--- a/database/seed.sql
++++ b/database/seed.sql
+@@ -29,5 +29,25 @@ INSERT INTO repayment_statuses (status_name) VALUES
+ ('Defaulted'),
+ ('Rolled Over');
+ 
++-- Banks: South African banks + universal branch codes
++INSERT INTO banks (bank_name, branch_code) VALUES
++('Absa Bank', '632005'),
++('Access Bank South Africa', '410506'),
++('African Bank', '430000'),
++('Bank Zero', '888000'),
++('Bidvest Bank', '462005'),
++('Capitec Bank', '470010'),
++('Discovery Bank', '679000'),
++('First National Bank (FNB)', '250655'),
++('Grindrod Bank', '584000'),
++('Investec Bank', '580105'),
++('Mercantile Bank', '450905'),
++('Nedbank', '198765'),
++('Postbank (SAPO)', '460005'),
++('Sasfin Bank', '683000'),
++('Standard Bank', '051001'),
++('TymeBank', '678910'),
++('Ubank', '431010');
++
+ INSERT INTO daily_counters (counter_date, last_value) VALUES (CURRENT_DATE, 0)
+ ON CONFLICT (counter_date) DO NOTHING;
+diff --git a/models/Bank.php b/models/Bank.php
+new file mode 100644
+index 0000000..56228eb
+--- /dev/null
++++ b/models/Bank.php
+@@ -0,0 +1,17 @@
++<?php
++
++class Bank extends Model
++{
++    protected string $table = 'banks';
++
++    public function all(string $orderBy = 'bank_name ASC'): array
++    {
++        return $this->query("SELECT * FROM banks ORDER BY {$orderBy}")->fetchAll();
++    }
++
++    public function find(int $id): ?array
++    {
++        $row = $this->query("SELECT * FROM banks WHERE id = :id", ['id' => $id])->fetch();
++        return $row ?: null;
++    }
++}
+diff --git a/models/Loan.php b/models/Loan.php
+index 64eeec0..617e4c6 100644
+--- a/models/Loan.php
++++ b/models/Loan.php
+@@ -99,10 +99,10 @@ class Loan extends Model
+             $this->query(
+                 "INSERT INTO loans
+                     (reference_number, client_id, branch_id, loan_status_id, repayment_status_id,
+-                     amount, workplace_name, work_contact, action_date, notes, created_by, created_at)
++                     amount, workplace_name, work_contact, bank_id, action_date, notes, created_by, created_at)
+                  VALUES
+                     (:reference_number, :client_id, :branch_id, :loan_status_id, :repayment_status_id,
+-                     :amount, :workplace_name, :work_contact, :action_date, :notes, :created_by, :date_loaded)",
++                     :amount, :workplace_name, :work_contact, :bank_id, :action_date, :notes, :created_by, :date_loaded)",
+                 [
+                     'reference_number'    => $reference,
+                     'client_id'           => $client['id'],
+@@ -112,6 +112,7 @@ class Loan extends Model
+                     'amount'              => $d['amount'],
+                     'workplace_name'      => $d['workplace_name'] ?? null,
+                     'work_contact'        => $d['work_contact'] ?? null,
++                    'bank_id'             => $d['bank_id'] ?? null,
+                     'action_date'         => $d['action_date'],
+                     'notes'               => $d['notes'] ?? null,
+                     'created_by'          => $d['created_by'] ?? null,
+@@ -164,6 +165,7 @@ public function update(int $id, array $d): bool
+             "UPDATE loans SET branch_id = :branch_id, loan_status_id = :loan_status_id,
+                 repayment_status_id = :repayment_status_id, amount = :amount,
+                 workplace_name = :workplace_name, work_contact = :work_contact,
++                bank_id = :bank_id,
+                 action_date = :action_date,
+                 notes = :notes, created_at = :date_loaded, updated_at = NOW()
+              WHERE id = :id",
+@@ -174,6 +176,7 @@ public function update(int $id, array $d): bool
+                 'amount'              => $d['amount'],
+                 'workplace_name'      => $d['workplace_name'] ?? null,
+                 'work_contact'        => $d['work_contact'] ?? null,
++                'bank_id'             => $d['bank_id'] ?? null,
+                 'action_date'         => $d['action_date'],
+                 'notes'               => $d['notes'] ?? null,
+                 'date_loaded'         => $d['date_loaded'],
+diff --git a/public/assets/js/clients.js b/public/assets/js/clients.js
+index 833d9a5..ef8af67 100644
+--- a/public/assets/js/clients.js
++++ b/public/assets/js/clients.js
+@@ -76,6 +76,7 @@ $(function () {
+                 tbody.append(`<tr>
+                     <td class="fw-semibold">${l.reference_number}</td>
+                     <td>${l.branch_name}</td>
++                    <td>${l.bank_name ? l.bank_name + ' (' + l.bank_branch_code + ')' : '<span class="text-muted">-</span>'}</td>
+                     <td>${fmtMoney(l.amount)}</td>
+                     <td>${fmtMoney(l.amount_due)}</td>
+                     <td><span class="badge-status ${statusBadgeClass(l.status)}">${l.status}</span></td>
+@@ -84,7 +85,7 @@ $(function () {
+                 </tr>`);
+             });
+             if (res.loans.length === 0) {
+-                tbody.append('<tr><td colspan="7" class="text-center text-muted py-3">No loans for this client yet.</td></tr>');
++                tbody.append('<tr><td colspan="8" class="text-center text-muted py-3">No loans for this client yet.</td></tr>');
+             }
+ 
+             new bootstrap.Modal(document.getElementById('viewClientModal')).show();
+diff --git a/public/assets/js/register.js b/public/assets/js/register.js
+index 36a1ff1..78faef3 100644
+--- a/public/assets/js/register.js
++++ b/public/assets/js/register.js
+@@ -186,6 +186,7 @@ $(function () {
+             $('#edit_repayment_status_id').val(l.repayment_status_id);
+             $('#edit_workplace_name').val(l.workplace_name || '');
+             $('#edit_work_contact').val(l.work_contact || '');
++            $('#edit_bank_id').val(l.bank_id || '');
+             $('#edit_notes').val(l.notes || '');
+             refreshEditCalculatedFigures();
+             new bootstrap.Modal(document.getElementById('editLoanModal')).show();
+@@ -215,6 +216,7 @@ $(function () {
+             repayment_status_id: $('#edit_repayment_status_id').val(),
+             workplace_name: $('#edit_workplace_name').val(),
+             work_contact: $('#edit_work_contact').val(),
++            bank_id: $('#edit_bank_id').val(),
+             notes: $('#edit_notes').val(),
+         };
+         $.post(window.APP_URL + '/loans/' + id + '/update', payload, function (res) {
+diff --git a/views/clients/index.php b/views/clients/index.php
+index bf7e567..2100486 100644
+--- a/views/clients/index.php
++++ b/views/clients/index.php
+@@ -52,7 +52,7 @@
+         <div class="table-responsive">
+             <table class="table table-clean align-middle mb-0">
+                 <thead>
+-                    <tr><th>Ref No.</th><th>Branch</th><th>Amount</th><th>Amount Due</th><th>Loan Status</th><th>Repayment Status</th><th>Action Date</th></tr>
++                    <tr><th>Ref No.</th><th>Branch</th><th>Bank</th><th>Amount</th><th>Amount Due</th><th>Loan Status</th><th>Repayment Status</th><th>Action Date</th></tr>
+                 </thead>
+                 <tbody id="view_loans_tbody"></tbody>
+             </table>
+diff --git a/views/loans/capture.php b/views/loans/capture.php
+index a0458c0..468a075 100644
+--- a/views/loans/capture.php
++++ b/views/loans/capture.php
+@@ -85,6 +85,16 @@
+                         </select>
+                         <div class="invalid-feedback" data-error-for="branch_id"></div>
+                     </div>
++                    <div class="col-md-4">
++                        <label class="form-label">Bank *</label>
++                        <select class="form-select" name="bank_id" required>
++                            <option value="">Select bank</option>
++                            <?php foreach ($banks as $bk): ?>
++                                <option value="<?= $bk['id'] ?>"><?= htmlspecialchars($bk['bank_name']) ?> (<?= htmlspecialchars($bk['branch_code']) ?>)</option>
++                            <?php endforeach; ?>
++                        </select>
++                        <div class="invalid-feedback" data-error-for="bank_id"></div>
++                    </div>
+                     <div class="col-md-4">
+                         <label class="form-label">Action Date * <span class="text-muted fw-normal">(client's expected payment date)</span></label>
+                         <input type="date" class="form-control" name="action_date" value="<?= date('Y-m-d') ?>" required>
+diff --git a/views/loans/register.php b/views/loans/register.php
+index 88ba437..346eeb9 100644
+--- a/views/loans/register.php
++++ b/views/loans/register.php
+@@ -184,6 +184,14 @@
+                     <label class="form-label">Work Contact</label>
+                     <input type="text" class="form-control" name="work_contact" id="edit_work_contact">
+                 </div>
++                <div class="col-md-6">
++                    <label class="form-label">Bank *</label>
++                    <select class="form-select" name="bank_id" id="edit_bank_id" required>
++                        <option value="">Select bank</option>
++                        <?php foreach ($banks as $bk): ?><option value="<?= $bk['id'] ?>"><?= htmlspecialchars($bk['bank_name']) ?> (<?= htmlspecialchars($bk['branch_code']) ?>)</option><?php endforeach; ?>
++                    </select>
++                    <div class="invalid-feedback" data-error-for="bank_id"></div>
++                </div>
+                 <div class="col-md-6">
+                     <label class="form-label">Interest Amount <span class="text-muted fw-normal">(auto, 40%)</span></label>
+                     <input type="text" class="form-control" id="edit_interest_amount" readonly tabindex="-1">

@@ -29,5 +29,25 @@ INSERT INTO repayment_statuses (status_name) VALUES
 ('Defaulted'),
 ('Rolled Over');
 
+-- Banks: South African banks + universal branch codes
+INSERT INTO banks (bank_name, branch_code) VALUES
+('Absa Bank', '632005'),
+('Access Bank South Africa', '410506'),
+('African Bank', '430000'),
+('Bank Zero', '888000'),
+('Bidvest Bank', '462005'),
+('Capitec Bank', '470010'),
+('Discovery Bank', '679000'),
+('First National Bank (FNB)', '250655'),
+('Grindrod Bank', '584000'),
+('Investec Bank', '580105'),
+('Mercantile Bank', '450905'),
+('Nedbank', '198765'),
+('Postbank (SAPO)', '460005'),
+('Sasfin Bank', '683000'),
+('Standard Bank', '051001'),
+('TymeBank', '678910'),
+('Ubank', '431010');
+
 INSERT INTO daily_counters (counter_date, last_value) VALUES (CURRENT_DATE, 0)
 ON CONFLICT (counter_date) DO NOTHING;

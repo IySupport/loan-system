@@ -54,6 +54,15 @@ CREATE TABLE repayment_statuses (
 );
 
 -- ---------------------------------------------------------------------
+-- Banks (lookup) - South African banks + universal branch codes
+-- ---------------------------------------------------------------------
+CREATE TABLE banks (
+    id              SERIAL PRIMARY KEY,
+    bank_name       VARCHAR(100) NOT NULL UNIQUE,
+    branch_code     VARCHAR(10)  NOT NULL
+);
+
+-- ---------------------------------------------------------------------
 -- Clients (unique per ID Number)
 -- ---------------------------------------------------------------------
 CREATE TABLE clients (
@@ -89,6 +98,7 @@ CREATE TABLE loans (
     -- Workplace info: where the client works, for repayment follow-up.
     workplace_name        VARCHAR(150),
     work_contact           VARCHAR(30),
+    bank_id                INTEGER REFERENCES banks(id),
     -- Interest / Amount Due are DERIVED, never entered manually:
     --   interest_amount = amount * 40%
     --   amount_due      = amount + interest_amount
@@ -109,6 +119,7 @@ CREATE INDEX idx_loans_repayment  ON loans(repayment_status_id);
 CREATE INDEX idx_loans_created    ON loans(created_at);
 CREATE INDEX idx_loans_workplace  ON loans(workplace_name);
 CREATE INDEX idx_loans_action_date ON loans(action_date);
+CREATE INDEX idx_loans_bank       ON loans(bank_id);
 
 -- ---------------------------------------------------------------------
 -- View: computes loan_count and group DYNAMICALLY (never stored)
@@ -144,12 +155,16 @@ SELECT
     l.workplace_name,
     l.work_contact,
     l.interest_amount,
-    l.amount_due
+    l.amount_due,
+    l.bank_id,
+    bk.bank_name,
+    bk.branch_code  AS bank_branch_code
 FROM loans l
 JOIN clients c              ON c.id = l.client_id
 JOIN branches b              ON b.id = l.branch_id
 JOIN loan_statuses ls         ON ls.id = l.loan_status_id
 JOIN repayment_statuses rs    ON rs.id = l.repayment_status_id
+LEFT JOIN banks bk            ON bk.id = l.bank_id
 JOIN (
     SELECT client_id, COUNT(*) AS loan_count
     FROM loans

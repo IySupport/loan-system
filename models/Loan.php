@@ -60,11 +60,11 @@ class Loan extends Model
             $stmt = $this->query(
                 "INSERT INTO loans
                     (reference_number, client_id, branch_id, loan_status_id,
-                    repayment_status_id, amount, workplace_name, work_contact,
+                    repayment_status_id, amount, workplace_name, work_contact, bank_id,
                     action_date, notes, created_by, created_at)
                 VALUES
                     (:reference_number, :client_id, :branch_id, :loan_status_id,
-                    :repayment_status_id, :amount, :workplace_name, :work_contact,
+                    :repayment_status_id, :amount, :workplace_name, :work_contact, :bank_id,
                     :action_date, :notes, :created_by, :date_loaded)
                 RETURNING id",
                 [
@@ -76,6 +76,7 @@ class Loan extends Model
                     'amount'              => $d['amount'],
                     'workplace_name'      => $d['workplace_name'] ?: null,
                     'work_contact'        => $d['work_contact'] ?: null,
+                    'bank_id'             => $d['bank_id'] ?: null,
                     'action_date'         => $d['action_date'],
                     'notes'               => $d['notes'] ?: null,
                     'created_by'          => $d['created_by'] ?? null,
@@ -115,6 +116,7 @@ public function update(int $id, array $d): bool
             "UPDATE loans SET branch_id = :branch_id, loan_status_id = :loan_status_id,
                 repayment_status_id = :repayment_status_id, amount = :amount,
                 workplace_name = :workplace_name, work_contact = :work_contact,
+                bank_id = :bank_id,
                 action_date = :action_date,
                 notes = :notes, created_at = :date_loaded, updated_at = NOW()
              WHERE id = :id",
@@ -125,6 +127,7 @@ public function update(int $id, array $d): bool
                 'amount'              => $d['amount'],
                 'workplace_name'      => $d['workplace_name'] ?? null,
                 'work_contact'        => $d['work_contact'] ?? null,
+                'bank_id'             => $d['bank_id'] ?? null,
                 'action_date'         => $d['action_date'],
                 'notes'               => $d['notes'] ?? null,
                 'date_loaded'         => $d['date_loaded'],
@@ -224,28 +227,90 @@ public function update(int $id, array $d): bool
     }
 
     private const SORTABLE = [
-        'reference_number', 'name', 'surname', 'id_number', 'account_number', 'amount',
+        'reference_number', 'name', 'surname', 'id_number', 'account_number',  'bank','amount',
         'branch_name', 'loan_count', 'loan_group', 'status', 'repayment_status', 'action_date', 'date_loaded',
         'workplace_name',
     ];
 
-    public function registerList(array $filters, string $orderBy = 'date_loaded', string $orderDir = 'DESC', int $limit = 25, int $offset = 0): array
-    {
-        [$whereSql, $params] = $this->buildFilterClause($filters);
-        $orderBy  = in_array($orderBy, self::SORTABLE, true) ? $orderBy : 'date_loaded';
-        $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
+// public function registerList(array $filters, string $orderBy = 'date_loaded', string $orderDir = 'DESC', int $limit = 25, int $offset = 0): array
+//     {
+//         [$whereSql, $params] = $this->buildFilterClause($filters);
+//         $orderBy  = in_array($orderBy, self::SORTABLE, true) ? $orderBy : 'date_loaded';
+//         $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
 
-        $total = (int) $this->query("SELECT COUNT(*) c FROM loan_register_view {$whereSql}", $params)->fetch()['c'];
+//         $total = (int) $this->query("SELECT COUNT(*) c FROM loan_register_view {$whereSql}", $params)->fetch()['c'];
 
-        $sql = "SELECT * FROM loan_register_view {$whereSql} ORDER BY {$orderBy} {$orderDir} LIMIT :limit OFFSET :offset";
-        $stmt = $this->db->prepare($sql);
-        foreach ($params as $k => $v) { $stmt->bindValue(":$k", $v); }
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
+//         $sql = "SELECT * FROM loan_register_view {$whereSql} ORDER BY {$orderBy} {$orderDir} LIMIT :limit OFFSET :offset";
+//         $stmt = $this->db->prepare($sql);
+//         foreach ($params as $k => $v) { $stmt->bindValue(":$k", $v); }
+//         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+//         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+//         $stmt->execute();
 
-        return ['data' => $stmt->fetchAll(), 'total' => $total];
+//         return ['data' => $stmt->fetchAll(), 'total' => $total];
+//     }
+public function registerList(
+    array $filters,
+    string $orderBy = 'date_loaded',
+    string $orderDir = 'DESC',
+    int $limit = 25,
+    int $offset = 0
+): array {
+    [$whereSql, $params] = $this->buildFilterClause($filters);
+
+    $orderBy = in_array($orderBy, self::SORTABLE, true)
+        ? $orderBy
+        : 'date_loaded';
+
+    $orderDir = strtoupper($orderDir) === 'ASC'
+        ? 'ASC'
+        : 'DESC';
+
+    /*
+     * Use a subquery so the existing unqualified filters such as
+     * branch_id, loan_status_id and id continue working.
+     */
+    $sourceSql = "
+        (
+            SELECT
+                lr.*,
+                b.bank_name AS bank_name
+            FROM loan_register_view lr
+            LEFT JOIN banks b ON b.id = lr.bank_id
+        ) AS register_rows
+    ";
+
+    $total = (int) $this->query(
+        "SELECT COUNT(*) AS c
+         FROM {$sourceSql}
+         {$whereSql}",
+        $params
+    )->fetch()['c'];
+
+    $sql = "
+        SELECT *
+        FROM {$sourceSql}
+        {$whereSql}
+        ORDER BY {$orderBy} {$orderDir}
+        LIMIT :limit OFFSET :offset
+    ";
+
+    $stmt = $this->db->prepare($sql);
+
+    foreach ($params as $key => $value) {
+        $stmt->bindValue(":{$key}", $value);
     }
+
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+    $stmt->execute();
+
+    return [
+        'data'  => $stmt->fetchAll(),
+        'total' => $total,
+    ];
+}
 
     public function registerAll(array $filters): array
     {

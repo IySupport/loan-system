@@ -73,6 +73,7 @@ $(function () {
             { data: 'surname' },
             { data: 'id_number' },
             { data: 'account_number' },
+             { data: 'bank_name', defaultContent: '-' },
             { data: 'amount', render: (d) => fmtMoney(d) },
             { data: 'branch_name' },
             { data: 'workplace_name', render: (d) => d ? d : '<span class="text-muted">-</span>' },
@@ -211,6 +212,7 @@ $('#deleteSelectedBtn').on('click', async function () {
             $('#edit_repayment_status_id').val(l.repayment_status_id);
             $('#edit_workplace_name').val(l.workplace_name || '');
             $('#edit_work_contact').val(l.work_contact || '');
+            $('#edit_bank_id').val(l.bank_id || '');
             $('#edit_notes').val(l.notes || '');
             refreshEditCalculatedFigures();
             new bootstrap.Modal(document.getElementById('editLoanModal')).show();
@@ -240,6 +242,7 @@ $('#deleteSelectedBtn').on('click', async function () {
             repayment_status_id: $('#edit_repayment_status_id').val(),
             workplace_name: $('#edit_workplace_name').val(),
             work_contact: $('#edit_work_contact').val(),
+            bank_id: $('#edit_bank_id').val(),
             notes: $('#edit_notes').val(),
         };
         $.post(window.APP_URL + '/loans/' + id + '/update', payload, function (res) {

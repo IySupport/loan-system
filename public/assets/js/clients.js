@@ -76,6 +76,7 @@ $(function () {
                 tbody.append(`<tr>
                     <td class="fw-semibold">${l.reference_number}</td>
                     <td>${l.branch_name}</td>
+                    <td>${l.bank_name ? l.bank_name + ' (' + l.bank_branch_code + ')' : '<span class="text-muted">-</span>'}</td>
                     <td>${fmtMoney(l.amount)}</td>
                     <td>${fmtMoney(l.amount_due)}</td>
                     <td><span class="badge-status ${statusBadgeClass(l.status)}">${l.status}</span></td>
@@ -84,7 +85,7 @@ $(function () {
                 </tr>`);
             });
             if (res.loans.length === 0) {
-                tbody.append('<tr><td colspan="7" class="text-center text-muted py-3">No loans for this client yet.</td></tr>');
+                tbody.append('<tr><td colspan="8" class="text-center text-muted py-3">No loans for this client yet.</td></tr>');
             }
 
             new bootstrap.Modal(document.getElementById('viewClientModal')).show();

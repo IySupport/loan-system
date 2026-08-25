@@ -8,6 +8,7 @@ class LoanController extends Controller
             'branches'          => (new Branch())->activeBranches(),
             'loanStatuses'      => (new LoanStatus())->all('id ASC'),
             'repaymentStatuses' => (new RepaymentStatus())->all('id ASC'),
+            'banks'             => (new Bank())->all(),
         ];
     }
 
@@ -41,6 +42,7 @@ class LoanController extends Controller
                 'branch_id'           => (int) $_POST['branch_id'],
                 'loan_status_id'      => (int) $_POST['loan_status_id'],
                 'repayment_status_id' => (int) $_POST['repayment_status_id'],
+                'bank_id'             => (int) $_POST['bank_id'],
                 'amount'              => (float) $_POST['amount'],
                 'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
                 'work_contact'        => trim($_POST['work_contact'] ?? ''),
@@ -67,6 +69,7 @@ class LoanController extends Controller
         if (empty($d['branch_id']))              $errors['branch_id'] = 'Branch is required.';
         if (empty($d['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
         if (empty($d['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
+        if (empty($d['bank_id']))                $errors['bank_id'] = 'Bank is required.';
         if (empty($d['action_date']))            $errors['action_date'] = 'Action Date is required.';
         if (empty($d['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
         return $errors;
@@ -143,6 +146,7 @@ class LoanController extends Controller
         if (empty($_POST['branch_id']))              $errors['branch_id'] = 'Branch is required.';
         if (empty($_POST['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
         if (empty($_POST['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
+        if (empty($_POST['bank_id']))                $errors['bank_id'] = 'Bank is required.';
         if (empty($_POST['action_date']))            $errors['action_date'] = 'Action Date is required.';
         if (empty($_POST['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
         if (!empty($errors)) $this->json(['success' => false, 'errors' => $errors], 422);
@@ -151,6 +155,7 @@ class LoanController extends Controller
             'branch_id'           => (int) $_POST['branch_id'],
             'loan_status_id'      => (int) $_POST['loan_status_id'],
             'repayment_status_id' => (int) $_POST['repayment_status_id'],
+            'bank_id'             => (int) $_POST['bank_id'],
             'amount'              => (float) $_POST['amount'],
             'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
             'work_contact'        => trim($_POST['work_contact'] ?? ''),
