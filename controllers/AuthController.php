@@ -5,7 +5,7 @@ class AuthController extends Controller
     public function showLogin(): void
     {
         if (Auth::check()) {
-            $this->redirect('/dashboard');
+            $this->redirect(Auth::landingPath());
         }
         $this->view('auth/login', ['error' => null], null);
     }
@@ -21,7 +21,7 @@ class AuthController extends Controller
         }
 
         if (Auth::attempt($username, $password)) {
-            $this->redirect('/dashboard');
+            $this->redirect(Auth::landingPath());
             return;
         }
 

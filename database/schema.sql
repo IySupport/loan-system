@@ -20,11 +20,13 @@ CREATE TABLE users (
     username        VARCHAR(60)  NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     role            VARCHAR(20)  NOT NULL DEFAULT 'Operator'
-                    CHECK (role IN ('Administrator','Operator')),
+                    CHECK (role IN ('Administrator','Operator','Branch')),
+    branch_id       INTEGER, -- FK added below, after the branches table exists
     status          VARCHAR(20)  NOT NULL DEFAULT 'Active'
                     CHECK (status IN ('Active','Inactive')),
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_users_branch ON users(branch_id);
 
 -- ---------------------------------------------------------------------
 -- Branches
@@ -36,6 +38,8 @@ CREATE TABLE branches (
                     CHECK (status IN ('Active','Inactive')),
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users ADD CONSTRAINT users_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches(id);
 
 -- ---------------------------------------------------------------------
 -- Loan Statuses (lookup)

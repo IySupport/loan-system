@@ -5,8 +5,20 @@ class UserController extends Controller
     public function index(): void
     {
         Auth::requireAdmin();
-        $users = (new User())->all('full_name ASC');
-        $this->view('users/index', ['users' => $users, 'csrf' => $this->csrfToken()]);
+        $users = (new User())->allWithBranchName();
+        $branches = (new Branch())->activeBranches();
+        $this->view('users/index', ['users' => $users, 'branches' => $branches, 'csrf' => $this->csrfToken()]);
+    }
+
+    private function validateRoleAndBranch(string $role, $branchId): array
+    {
+        $errors = [];
+        if (!in_array($role, ['Administrator', 'Operator', 'Branch'], true)) {
+            $errors['role'] = 'Invalid role.';
+        } elseif ($role === 'Branch' && empty($branchId)) {
+            $errors['branch_id'] = 'A Branch account must be assigned a branch.';
+        }
+        return $errors;
     }
 
     public function store(): void
@@ -14,16 +26,16 @@ class UserController extends Controller
         Auth::requireAdmin();
         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
 
-        $errors = [];
         $fullName = trim($this->input('full_name', ''));
         $username = trim($this->input('username', ''));
         $password = (string) $this->input('password', '');
         $role     = $this->input('role', 'Operator');
+        $branchId = $this->input('branch_id', '');
 
+        $errors = $this->validateRoleAndBranch($role, $branchId);
         if ($fullName === '') $errors['full_name'] = 'Full name is required.';
         if ($username === '') $errors['username'] = 'Username is required.';
         if (strlen($password) < 6) $errors['password'] = 'Password must be at least 6 characters.';
-        if (!in_array($role, ['Administrator', 'Operator'], true)) $errors['role'] = 'Invalid role.';
 
         $userModel = new User();
         if ($username !== '' && $userModel->usernameExists($username)) {
@@ -33,7 +45,7 @@ class UserController extends Controller
 
         $id = $userModel->create([
             'full_name' => $fullName, 'username' => $username, 'password' => $password,
-            'role' => $role, 'status' => 'Active',
+            'role' => $role, 'branch_id' => $branchId ?: null, 'status' => 'Active',
         ]);
         $this->json(['success' => true, 'id' => $id]);
     }
@@ -46,9 +58,10 @@ class UserController extends Controller
         $fullName = trim($this->input('full_name', ''));
         $username = trim($this->input('username', ''));
         $role     = $this->input('role', 'Operator');
+        $branchId = $this->input('branch_id', '');
         $status   = $this->input('status', 'Active');
 
-        $errors = [];
+        $errors = $this->validateRoleAndBranch($role, $branchId);
         if ($fullName === '') $errors['full_name'] = 'Full name is required.';
         if ($username === '') $errors['username'] = 'Username is required.';
 
@@ -59,7 +72,8 @@ class UserController extends Controller
         if (!empty($errors)) $this->json(['success' => false, 'errors' => $errors], 422);
 
         $ok = $userModel->update((int) $id, [
-            'full_name' => $fullName, 'username' => $username, 'role' => $role, 'status' => $status,
+            'full_name' => $fullName, 'username' => $username, 'role' => $role,
+            'branch_id' => $branchId ?: null, 'status' => $status,
         ]);
         $this->json(['success' => $ok]);
     }

@@ -4,7 +4,7 @@ class DashboardController extends Controller
 {
     public function index(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $loan = new Loan();
 
         $kpis              = $loan->kpis();

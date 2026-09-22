@@ -4,14 +4,14 @@ class BranchController extends Controller
 {
     public function index(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $branches = (new Branch())->all('branch_name ASC');
         $this->view('branches/index', ['branches' => $branches, 'csrf' => $this->csrfToken()]);
     }
 
     public function store(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
 
         $name = trim($this->input('branch_name', ''));
@@ -27,7 +27,7 @@ class BranchController extends Controller
 
     public function update(string $id): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
 
         $name = trim($this->input('branch_name', ''));
@@ -44,7 +44,7 @@ class BranchController extends Controller
 
     public function deactivate(string $id): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
         $branchModel = new Branch();
         $branch = $branchModel->find((int) $id);

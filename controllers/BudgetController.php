@@ -89,7 +89,7 @@ class BudgetController extends Controller
     public function status(): void
     {
         Auth::requireLogin();
-        $branchId = (int) $this->input('branch_id');
+        $branchId = Auth::isBranch() ? Auth::branchId() : (int) $this->input('branch_id');
         $month    = $this->normalizeMonth($this->input('month', date('Y-m-01')));
 
         if (!$branchId) {
@@ -99,9 +99,23 @@ class BudgetController extends Controller
         $budgetModel = new BranchBudget();
         $loanModel   = new Loan();
         $budget = $budgetModel->findBudget($branchId, $month);
-        // $budget    = $budgetModel->find($branchId, $month);
         $allocated = $budget ? (float) $budget['allocated_amount'] : 0.0;
         $spent     = $loanModel->spentForBranchMonth($branchId, $month);
+
+        // Branch accounts only see their own branch's figures - company-wide
+        // totals are cross-branch financial data they shouldn't have access to.
+        if (Auth::isBranch()) {
+            $this->json([
+                'success' => true,
+                'month'   => $month,
+                'branch'  => [
+                    'allocated' => $allocated,
+                    'spent'     => $spent,
+                    'remaining' => $allocated - $spent,
+                ],
+                'company' => null,
+            ]);
+        }
 
         $companyAllocated = $budgetModel->totalAllocatedForMonth($month);
         $companySpent = 0.0;

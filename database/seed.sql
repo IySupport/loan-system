@@ -51,3 +51,17 @@ INSERT INTO banks (bank_name, branch_code) VALUES
 
 INSERT INTO daily_counters (counter_date, last_value) VALUES (CURRENT_DATE, 0)
 ON CONFLICT (counter_date) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Example: creating a Branch account (commented out - not run automatically,
+-- since this file has already been run against a live database).
+-- 1. Generate a hash:  php public/tools/make_hash.php "SomePassword123"
+-- 2. Find the branch's id:  SELECT id, branch_name FROM branches;
+-- 3. Insert, using that hash and branch id:
+--
+-- INSERT INTO users (full_name, username, password_hash, role, branch_id, status)
+-- VALUES ('Durban Branch', 'durban.branch', '<paste generated hash>', 'Branch', 1, 'Active');
+--
+-- Or simply use the User Management screen (Administrator login required) -
+-- Add User -> Role: Branch -> pick the branch from the dropdown.
+-- ---------------------------------------------------------------------

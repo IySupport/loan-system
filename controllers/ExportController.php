@@ -72,7 +72,7 @@ class ExportController extends Controller
 
     public function exportSelected(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $ids = $_GET['ids'] ?? '';
         $ids = $ids !== '' ? array_map('intval', explode(',', $ids)) : [];
         $rows = $this->rows(['ids' => $ids]);
@@ -81,7 +81,7 @@ class ExportController extends Controller
 
     public function exportFiltered(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $filters = [
             'search'           => $_GET['search'] ?? '',
             'branch_id'        => $_GET['branch_id'] ?? '',
@@ -104,14 +104,14 @@ class ExportController extends Controller
 
     public function exportAll(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $rows = $this->rows([]);
         $this->stream($rows, 'loans_all_' . date('Ymd_His') . '.xlsx');
     }
 
     public function exportByGroup(string $group): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $label = 'Group ' . preg_replace('/\D/', '', $group);
         $rows = $this->rows(['loan_group' => $label]);
         $this->stream($rows, 'loans_' . str_replace(' ', '_', strtolower($label)) . '_' . date('Ymd_His') . '.xlsx');
@@ -119,7 +119,7 @@ class ExportController extends Controller
 
     public function exportByBranch(string $branchId): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $rows = $this->rows(['branch_id' => (int) $branchId]);
         $this->stream($rows, 'loans_branch_' . $branchId . '_' . date('Ymd_His') . '.xlsx');
     }

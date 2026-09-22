@@ -1,4 +1,4 @@
-<?php $pageTitle = 'Capture Loan'; ?>
+<?php $pageTitle = 'Capture Loan'; $isBranch = Auth::isBranch(); ?>
 
 <div class="d-flex justify-content-end mb-3">
     <a href="<?= APP_URL ?>/loans/register" class="btn btn-outline-brand btn-sm">
@@ -88,12 +88,15 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Branch *</label>
-                        <select class="form-select" name="branch_id" required>
+                        <select class="form-select" name="branch_id" required <?= $isBranch ? 'disabled' : '' ?>>
                             <option value="">Select branch</option>
                             <?php foreach ($branches as $b): ?>
-                                <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
+                                <option value="<?= $b['id'] ?>" <?= ($isBranch && $b['id'] == Auth::branchId()) ? 'selected' : '' ?>><?= htmlspecialchars($b['branch_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <?php if ($isBranch): ?>
+                            <div class="form-text">Locked to your branch.</div>
+                        <?php endif; ?>
                         <div class="invalid-feedback" data-error-for="branch_id"></div>
                     </div>
 
@@ -108,6 +111,15 @@
                         <div class="form-text">Backdate this if you're capturing a loan from a previous month.</div>
                         <div class="invalid-feedback" data-error-for="date_loaded"></div>
                     </div>
+                    <?php if ($isBranch): ?>
+                    <div class="col-md-8">
+                        <label class="form-label">Loan Status &amp; Repayment Status</label>
+                        <div class="form-control-plaintext text-muted small">
+                            <i class="bi bi-lock-fill"></i> New loans start as <strong>Pending Review</strong> / <strong>Not Due</strong>.
+                            An administrator updates the status from here once it's reviewed.
+                        </div>
+                    </div>
+                    <?php else: ?>
                     <div class="col-md-4">
                         <label class="form-label">Loan Status *</label>
                         <select class="form-select" name="loan_status_id" required>
@@ -128,6 +140,7 @@
                         </select>
                         <div class="invalid-feedback" data-error-for="repayment_status_id"></div>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="budget-status-box mt-3 d-none" id="budgetStatusBox">
@@ -149,7 +162,7 @@
                     <div id="budgetWarning" class="text-danger small mt-2 d-none">
                         <i class="bi bi-exclamation-triangle-fill"></i> This amount exceeds the branch's remaining budget for this month.
                     </div>
-                    <div class="text-muted small mt-2">
+                    <div id="companyBudgetLine" class="text-muted small mt-2">
                         Company-wide this month: <span id="companyBudgetSummary">-</span>
                     </div>
                     <div class="text-muted small mt-1">

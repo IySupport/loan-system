@@ -1,0 +1,1464 @@
+diff --git a/merged/BRANCH_ACCOUNTS_MIGRATION_GUIDE.md b/merged/BRANCH_ACCOUNTS_MIGRATION_GUIDE.md
+new file mode 100644
+index 0000000..fa8541f
+--- /dev/null
++++ b/merged/BRANCH_ACCOUNTS_MIGRATION_GUIDE.md
+@@ -0,0 +1,234 @@
++# Branch Accounts Migration Guide
++
++This package was prepared from the current working project at Git commit
++`6cdc425` (`added bank details`). The Branch Account changes were reconstructed
++from their original base (`f8a0485`) and merged on top of `6cdc425`.
++
++The merged result preserves:
++
++- bank selection and `bank_id`;
++- the 40% interest calculation;
++- `workplace_name` and `work_contact`;
++- the delete-confirmation fix;
++- the Action Date timezone fix;
++- the Neon transaction fix; and
++- the Excel export fixes.
++
++## Part 1 — Back up before changing anything
++
++1. Make a ZIP copy of the working project.
++2. Export the Neon PostgreSQL database with `pg_dump` or create a safe database
++   backup using the database tools available to you.
++3. Open a terminal in the working project and confirm the version:
++
++   ```bash
++   git rev-parse --short HEAD
++   ```
++
++   It should return `6cdc425`.
++4. Confirm the project does not contain uncommitted work:
++
++   ```bash
++   git status
++   ```
++
++5. Create a migration branch:
++
++   ```bash
++   git switch -c feature/branch-accounts
++   ```
++
++## Part 2 — Apply the exact code changes
++
++Choose one method only.
++
++### Method A: use the ready-merged project
++
++Use the files from `loan-system-branch-accounts-merged.zip`. Do not overwrite
++your `.env` file. The prepared ZIP deliberately excludes `.env`, `.git`, and
++`vendor`.
++
++### Method B: apply the exact patch
++
++Place `branch-accounts-on-6cdc425.patch` in the root of the current project and
++run:
++
++```bash
++git apply --check -p1 branch-accounts-on-6cdc425.patch
++git apply -p1 branch-accounts-on-6cdc425.patch
++```
++
++The first command must complete without an error. If it reports that a patch
++does not apply, stop instead of forcing it.
++
++## Part 3 — What the patch changes, file by file
++
++1. `database/migration_branch_accounts.sql`
++   - Adds nullable `users.branch_id` referencing `branches.id`.
++   - Adds `idx_users_branch`.
++   - Allows `Administrator`, `Operator`, and `Branch` roles.
++
++2. `core/Auth.php`
++   - Stores the user's branch ID and branch name in the session.
++   - Adds `isBranch()`, `branchId()`, `landingPath()`, and `requireStaff()`.
++
++3. `models/User.php`
++   - Returns the assigned branch name with users.
++   - Saves and updates `branch_id`.
++   - Loads the branch name during authentication.
++
++4. `controllers/UserController.php`
++   - Supplies branches to User Management.
++   - Validates that a Branch account has exactly one assigned branch.
++   - Forces `branch_id` to `NULL` for Administrators and Operators.
++
++5. `controllers/AuthController.php`
++   - Sends Branch accounts to Loan Register after login.
++
++6. `views/users/index.php` and `public/assets/js/users.js`
++   - Add the Branch role.
++   - Add the branch selector to Add User and Edit User.
++   - Show the branch selector only when the Branch role is selected.
++
++7. `controllers/LoanController.php`
++   - Keeps bank lookup and `bank_id` validation.
++   - Lets Administrators and Operators capture loans for any selected branch.
++   - Forces a Branch account's `branch_id` from the login session.
++   - Forces new Branch loans to `Pending Review` and `Not Due`.
++   - Scopes Loan Register results to the logged-in branch.
++   - Prevents a Branch account from opening another branch's loan.
++   - Prevents Branch accounts from changing the branch or statuses during edit.
++   - Makes bulk status, repayment-status, and delete actions staff-only.
++
++8. `views/loans/capture.php` and `public/assets/js/capture.js`
++   - Locks the branch selector for Branch accounts.
++   - Shows the automatically assigned initial statuses.
++   - Keeps bank selection available.
++   - Loads the branch budget even though the branch selector is locked.
++
++9. `views/loans/register.php` and `public/assets/js/register.js`
++   - Hides branch filtering and bulk actions from Branch accounts.
++   - Shows statuses as read-only during Branch-account editing.
++   - Hides Delete from Branch accounts.
++   - Preserves `bank_id` population and saving.
++
++10. `controllers/BudgetController.php`
++    - Forces Branch budget requests to the logged-in branch.
++    - Withholds company-wide totals from Branch accounts.
++
++11. `controllers/DashboardController.php`, `BranchController.php`,
++    `ReportController.php`, `ExportController.php`, and `ClientController.php`
++    - Restrict management screens/actions to Administrators and Operators.
++    - Keep the client lookup used by Capture Loan available.
++
++12. `views/layouts/app.php`
++    - Hides restricted navigation from Branch accounts.
++    - Shows the assigned branch name.
++
++13. `database/schema.sql` and `database/seed.sql`
++    - Update fresh installations without removing the bank schema or seed data.
++
++## Part 4 — Inspect and commit locally
++
++Run:
++
++```bash
++git diff --check
++git status
++```
++
++Confirm that `.env` is not listed. Then run PHP syntax checks in your local
++environment:
++
++```bash
++php -l core/Auth.php
++php -l models/User.php
++php -l controllers/AuthController.php
++php -l controllers/UserController.php
++php -l controllers/LoanController.php
++php -l controllers/BudgetController.php
++php -l views/users/index.php
++php -l views/loans/capture.php
++php -l views/loans/register.php
++php -l views/layouts/app.php
++```
++
++Commit the code only after those checks pass:
++
++```bash
++git add core models controllers views public database
++git commit -m "Add branch-level accounts and permissions"
++```
++
++## Part 5 — Apply the Neon database migration
++
++1. Sign in to Neon.
++2. Open the production project and correct database.
++3. Open SQL Editor.
++4. Open `database/migration_branch_accounts.sql` locally.
++5. Copy all its SQL into Neon SQL Editor.
++6. Run it once.
++7. Verify the result:
++
++   ```sql
++   SELECT id, full_name, username, role, branch_id
++   FROM users
++   ORDER BY id;
++   ```
++
++Existing Administrator and Operator accounts should have `NULL` in
++`branch_id`. That is correct.
++
++## Part 6 — Test all roles before deployment
++
++Start the local application:
++
++```bash
++php -S localhost:8000 -t public
++```
++
++Test an Administrator and Operator:
++
++- Both can capture loans.
++- Both can select any branch.
++- Both can select bank, Loan Status, and Repayment Status.
++- Both retain Dashboard, Reports, Exports, Branches, Clients, and Users access.
++
++Create and test a Branch account:
++
++- It must be assigned to one branch.
++- It lands on Loan Register.
++- It sees loans belonging only to its branch.
++- Capture Loan is locked to its branch.
++- It can still choose the client's bank.
++- New loan statuses are automatically `Pending Review` and `Not Due`.
++- It cannot change branch, Loan Status, or Repayment Status during edit.
++- It cannot delete loans or run bulk actions.
++- Restricted navigation is hidden.
++- Manually entering restricted URLs results in HTTP 403.
++
++## Part 7 — Deploy
++
++Push the tested feature branch:
++
++```bash
++git push -u origin feature/branch-accounts
++```
++
++After final approval, merge it:
++
++```bash
++git switch main
++git merge feature/branch-accounts
++git push origin main
++```
++
++Wait for Render to finish deploying, inspect its logs, and repeat the
++Administrator, Operator, and Branch tests on the live site.
++
++## Rollback
++
++If code deployment fails, redeploy the previous Render/Git commit. The new
++database column is nullable and does not prevent the earlier code from running.
++Do not delete the column during an emergency rollback; restoring the previous
++code is the safer first action.
+diff --git a/original/controllers/AuthController.php b/merged/controllers/AuthController.php
+index 950a83a..de0b709 100644
+--- a/original/controllers/AuthController.php
++++ b/merged/controllers/AuthController.php
+@@ -5,7 +5,7 @@ class AuthController extends Controller
+     public function showLogin(): void
+     {
+         if (Auth::check()) {
+-            $this->redirect('/dashboard');
++            $this->redirect(Auth::landingPath());
+         }
+         $this->view('auth/login', ['error' => null], null);
+     }
+@@ -21,7 +21,7 @@ class AuthController extends Controller
+         }
+ 
+         if (Auth::attempt($username, $password)) {
+-            $this->redirect('/dashboard');
++            $this->redirect(Auth::landingPath());
+             return;
+         }
+ 
+diff --git a/original/controllers/BranchController.php b/merged/controllers/BranchController.php
+index d6a22a7..49cff79 100644
+--- a/original/controllers/BranchController.php
++++ b/merged/controllers/BranchController.php
+@@ -4,14 +4,14 @@ class BranchController extends Controller
+ {
+     public function index(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $branches = (new Branch())->all('branch_name ASC');
+         $this->view('branches/index', ['branches' => $branches, 'csrf' => $this->csrfToken()]);
+     }
+ 
+     public function store(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+ 
+         $name = trim($this->input('branch_name', ''));
+@@ -27,7 +27,7 @@ class BranchController extends Controller
+ 
+     public function update(string $id): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+ 
+         $name = trim($this->input('branch_name', ''));
+@@ -44,7 +44,7 @@ class BranchController extends Controller
+ 
+     public function deactivate(string $id): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         $branchModel = new Branch();
+         $branch = $branchModel->find((int) $id);
+diff --git a/original/controllers/BudgetController.php b/merged/controllers/BudgetController.php
+index a66c7ca..258763f 100644
+--- a/original/controllers/BudgetController.php
++++ b/merged/controllers/BudgetController.php
+@@ -89,7 +89,7 @@ class BudgetController extends Controller
+     public function status(): void
+     {
+         Auth::requireLogin();
+-        $branchId = (int) $this->input('branch_id');
++        $branchId = Auth::isBranch() ? Auth::branchId() : (int) $this->input('branch_id');
+         $month    = $this->normalizeMonth($this->input('month', date('Y-m-01')));
+ 
+         if (!$branchId) {
+@@ -99,10 +99,24 @@ class BudgetController extends Controller
+         $budgetModel = new BranchBudget();
+         $loanModel   = new Loan();
+         $budget = $budgetModel->findBudget($branchId, $month);
+-        // $budget    = $budgetModel->find($branchId, $month);
+         $allocated = $budget ? (float) $budget['allocated_amount'] : 0.0;
+         $spent     = $loanModel->spentForBranchMonth($branchId, $month);
+ 
++        // Branch accounts only see their own branch's figures - company-wide
++        // totals are cross-branch financial data they shouldn't have access to.
++        if (Auth::isBranch()) {
++            $this->json([
++                'success' => true,
++                'month'   => $month,
++                'branch'  => [
++                    'allocated' => $allocated,
++                    'spent'     => $spent,
++                    'remaining' => $allocated - $spent,
++                ],
++                'company' => null,
++            ]);
++        }
++
+         $companyAllocated = $budgetModel->totalAllocatedForMonth($month);
+         $companySpent = 0.0;
+         foreach ($loanModel->spentByBranchForMonth($month) as $r) {
+diff --git a/original/controllers/ClientController.php b/merged/controllers/ClientController.php
+index 6e2118a..5ccd8e3 100644
+--- a/original/controllers/ClientController.php
++++ b/merged/controllers/ClientController.php
+@@ -79,7 +79,7 @@ class ClientController extends Controller
+     // ---------------------------------------------------------------
+     public function index(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $this->view('clients/index', [
+             'csrf' => $this->csrfToken(),
+         ]);
+@@ -88,7 +88,7 @@ class ClientController extends Controller
+     // AJAX server-side data source for the Clients DataTable
+     public function listData(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $draw   = (int) $this->input('draw', 1);
+         $start  = (int) $this->input('start', 0);
+         $length = (int) $this->input('length', 25);
+@@ -111,7 +111,7 @@ class ClientController extends Controller
+     // AJAX: GET /clients/{id} - client details + loan history, for the View modal
+     public function show(string $id): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $clientModel = new Client();
+         $client = $clientModel->find((int) $id);
+         if (!$client) {
+@@ -130,7 +130,7 @@ class ClientController extends Controller
+ 
+     public function update(string $id): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         if (!$this->verifyCsrf()) {
+             $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         }
+@@ -175,7 +175,7 @@ class ClientController extends Controller
+     // a loan is created between the check and the delete.
+     public function delete(string $id): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         if (!$this->verifyCsrf()) {
+             $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         }
+diff --git a/original/controllers/DashboardController.php b/merged/controllers/DashboardController.php
+index d5c17c2..1b3d4ec 100644
+--- a/original/controllers/DashboardController.php
++++ b/merged/controllers/DashboardController.php
+@@ -4,7 +4,7 @@ class DashboardController extends Controller
+ {
+     public function index(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $loan = new Loan();
+ 
+         $kpis              = $loan->kpis();
+diff --git a/original/controllers/ExportController.php b/merged/controllers/ExportController.php
+index d3c2ac1..c41b11f 100644
+--- a/original/controllers/ExportController.php
++++ b/merged/controllers/ExportController.php
+@@ -72,7 +72,7 @@ class ExportController extends Controller
+ 
+     public function exportSelected(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $ids = $_GET['ids'] ?? '';
+         $ids = $ids !== '' ? array_map('intval', explode(',', $ids)) : [];
+         $rows = $this->rows(['ids' => $ids]);
+@@ -81,7 +81,7 @@ class ExportController extends Controller
+ 
+     public function exportFiltered(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $filters = [
+             'search'           => $_GET['search'] ?? '',
+             'branch_id'        => $_GET['branch_id'] ?? '',
+@@ -104,14 +104,14 @@ class ExportController extends Controller
+ 
+     public function exportAll(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $rows = $this->rows([]);
+         $this->stream($rows, 'loans_all_' . date('Ymd_His') . '.xlsx');
+     }
+ 
+     public function exportByGroup(string $group): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $label = 'Group ' . preg_replace('/\D/', '', $group);
+         $rows = $this->rows(['loan_group' => $label]);
+         $this->stream($rows, 'loans_' . str_replace(' ', '_', strtolower($label)) . '_' . date('Ymd_His') . '.xlsx');
+@@ -119,7 +119,7 @@ class ExportController extends Controller
+ 
+     public function exportByBranch(string $branchId): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $rows = $this->rows(['branch_id' => (int) $branchId]);
+         $this->stream($rows, 'loans_branch_' . $branchId . '_' . date('Ymd_His') . '.xlsx');
+     }
+diff --git a/original/controllers/LoanController.php b/merged/controllers/LoanController.php
+index 4586add..090c80c 100644
+--- a/original/controllers/LoanController.php
++++ b/merged/controllers/LoanController.php
+@@ -12,6 +12,25 @@ class LoanController extends Controller
+         ];
+     }
+ 
++    /**
++     * Default Loan Status / Repayment Status assigned when a Branch
++     * account captures a new loan (Branch accounts never choose a
++     * status - "admin deals with statuses"). Looked up by name so this
++     * doesn't depend on insertion order/ids.
++     */
++    private function defaultStatusIdsForBranchCapture(): array
++    {
++        $loanStatusId = null;
++        foreach ((new LoanStatus())->all('id ASC') as $s) {
++            if ($s['status_name'] === 'Pending Review') { $loanStatusId = $s['id']; break; }
++        }
++        $repaymentStatusId = null;
++        foreach ((new RepaymentStatus())->all('id ASC') as $s) {
++            if ($s['status_name'] === 'Not Due') { $repaymentStatusId = $s['id']; break; }
++        }
++        return [$loanStatusId, $repaymentStatusId];
++    }
++
+     public function captureForm(): void
+     {
+         Auth::requireLogin();
+@@ -27,11 +46,25 @@ class LoanController extends Controller
+             $this->json(['success' => false, 'message' => 'Invalid session token, please refresh and try again.'], 419);
+         }
+ 
+-        $errors = $this->validate($_POST);
++        $isBranch = Auth::isBranch();
++
++        $errors = $this->validate($_POST, $isBranch);
+         if (!empty($errors)) {
+             $this->json(['success' => false, 'errors' => $errors], 422);
+         }
+ 
++        // Branch accounts can only ever create loans for their own branch,
++        // and never choose a status - both are forced server-side
++        // regardless of what was submitted.
++        if ($isBranch) {
++            $branchId = Auth::branchId();
++            [$loanStatusId, $repaymentStatusId] = $this->defaultStatusIdsForBranchCapture();
++        } else {
++            $branchId = (int) $_POST['branch_id'];
++            $loanStatusId = (int) $_POST['loan_status_id'];
++            $repaymentStatusId = (int) $_POST['repayment_status_id'];
++        }
++
+         try {
+             $result = (new Loan())->create([
+                 'name'                => trim($_POST['name']),
+@@ -39,9 +72,9 @@ class LoanController extends Controller
+                 'id_number'           => trim($_POST['id_number']),
+                 'account_number'      => trim($_POST['account_number'] ?? ''),
+                 'phone'               => trim($_POST['phone'] ?? ''),
+-                'branch_id'           => (int) $_POST['branch_id'],
+-                'loan_status_id'      => (int) $_POST['loan_status_id'],
+-                'repayment_status_id' => (int) $_POST['repayment_status_id'],
++                'branch_id'           => $branchId,
++                'loan_status_id'      => $loanStatusId,
++                'repayment_status_id' => $repaymentStatusId,
+                 'bank_id'             => (int) $_POST['bank_id'],
+                 'amount'              => (float) $_POST['amount'],
+                 'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
+@@ -57,7 +90,7 @@ class LoanController extends Controller
+         }
+     }
+ 
+-    private function validate(array $d): array
++    private function validate(array $d, bool $isBranch = false): array
+     {
+         $errors = [];
+         if (empty(trim($d['id_number'] ?? '')))         $errors['id_number'] = 'ID Number is required.';
+@@ -66,12 +99,14 @@ class LoanController extends Controller
+         if (!isset($d['amount']) || $d['amount'] === '' || !is_numeric($d['amount']) || (float) $d['amount'] < 0) {
+             $errors['amount'] = 'A valid, non-negative amount is required.';
+         }
+-        if (empty($d['branch_id']))              $errors['branch_id'] = 'Branch is required.';
+-        if (empty($d['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
+-        if (empty($d['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
+         if (empty($d['bank_id']))                $errors['bank_id'] = 'Bank is required.';
+         if (empty($d['action_date']))            $errors['action_date'] = 'Action Date is required.';
+         if (empty($d['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
++        if (!$isBranch) {
++            if (empty($d['branch_id']))              $errors['branch_id'] = 'Branch is required.';
++            if (empty($d['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
++            if (empty($d['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
++        }
+         return $errors;
+     }
+ 
+@@ -85,7 +120,7 @@ class LoanController extends Controller
+ 
+     private function filtersFromRequest(): array
+     {
+-        return [
++        $filters = [
+             'search'              => trim($this->input('search', '')),
+             'branch_id'           => $this->input('branch_id', ''),
+             'loan_group'          => $this->input('loan_group', ''),
+@@ -101,6 +136,14 @@ class LoanController extends Controller
+             'loan_count_min'      => $this->input('loan_count_min', ''),
+             'loan_count_max'      => $this->input('loan_count_max', ''),
+         ];
++
++        // Branch accounts can only ever see their own branch, no matter
++        // what branch_id filter value was requested.
++        if (Auth::isBranch()) {
++            $filters['branch_id'] = Auth::branchId();
++        }
++
++        return $filters;
+     }
+ 
+     // AJAX server-side data source for DataTables
+@@ -132,6 +175,11 @@ class LoanController extends Controller
+         Auth::requireLogin();
+         $loan = (new Loan())->findFull((int) $id);
+         if (!$loan) $this->json(['success' => false, 'message' => 'Loan not found'], 404);
++
++        if (Auth::isBranch() && (int) $loan['branch_id'] !== Auth::branchId()) {
++            $this->json(['success' => false, 'message' => 'You do not have access to this loan.'], 403);
++        }
++
+         $this->json(['success' => true, 'loan' => $loan]);
+     }
+ 
+@@ -141,20 +189,42 @@ class LoanController extends Controller
+         if (!$this->verifyCsrf()) {
+             $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         }
++
++        $loanModel = new Loan();
++        $existing = $loanModel->findFull((int) $id);
++        if (!$existing) $this->json(['success' => false, 'message' => 'Loan not found.'], 404);
++
++        $isBranch = Auth::isBranch();
++        if ($isBranch && (int) $existing['branch_id'] !== Auth::branchId()) {
++            $this->json(['success' => false, 'message' => 'You do not have access to this loan.'], 403);
++        }
++
+         $errors = [];
+         if (!isset($_POST['amount']) || $_POST['amount'] === '' || (float) $_POST['amount'] < 0) $errors['amount'] = 'A valid, non-negative amount is required.';
+-        if (empty($_POST['branch_id']))              $errors['branch_id'] = 'Branch is required.';
+-        if (empty($_POST['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
+-        if (empty($_POST['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
+         if (empty($_POST['bank_id']))                $errors['bank_id'] = 'Bank is required.';
+         if (empty($_POST['action_date']))            $errors['action_date'] = 'Action Date is required.';
+         if (empty($_POST['date_loaded']))            $errors['date_loaded'] = 'Date Loaded is required.';
++        if (!$isBranch) {
++            if (empty($_POST['branch_id']))              $errors['branch_id'] = 'Branch is required.';
++            if (empty($_POST['loan_status_id']))         $errors['loan_status_id'] = 'Loan Status is required.';
++            if (empty($_POST['repayment_status_id']))    $errors['repayment_status_id'] = 'Repayment Status is required.';
++        }
+         if (!empty($errors)) $this->json(['success' => false, 'errors' => $errors], 422);
+ 
+-        $ok = (new Loan())->update((int) $id, [
+-            'branch_id'           => (int) $_POST['branch_id'],
+-            'loan_status_id'      => (int) $_POST['loan_status_id'],
+-            'repayment_status_id' => (int) $_POST['repayment_status_id'],
++        if ($isBranch) {
++            $branchId = (int) $existing['branch_id'];
++            $loanStatusId = (int) $existing['loan_status_id'];
++            $repaymentStatusId = (int) $existing['repayment_status_id'];
++        } else {
++            $branchId = (int) $_POST['branch_id'];
++            $loanStatusId = (int) $_POST['loan_status_id'];
++            $repaymentStatusId = (int) $_POST['repayment_status_id'];
++        }
++
++        $ok = $loanModel->update((int) $id, [
++            'branch_id'           => $branchId,
++            'loan_status_id'      => $loanStatusId,
++            'repayment_status_id' => $repaymentStatusId,
+             'bank_id'             => (int) $_POST['bank_id'],
+             'amount'              => (float) $_POST['amount'],
+             'workplace_name'      => trim($_POST['workplace_name'] ?? ''),
+@@ -175,7 +245,7 @@ class LoanController extends Controller
+ 
+     public function bulkStatus(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff(); // Branch accounts never change statuses
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         $ids = $this->idsFromRequest();
+         $statusId = (int) $this->input('loan_status_id');
+@@ -186,7 +256,7 @@ class LoanController extends Controller
+ 
+     public function bulkRepaymentStatus(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff(); // Branch accounts never change statuses
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         $ids = $this->idsFromRequest();
+         $statusId = (int) $this->input('repayment_status_id');
+@@ -197,7 +267,7 @@ class LoanController extends Controller
+ 
+     public function bulkDelete(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff(); // Branch accounts can add/update/view only, never delete
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+         $ids = $this->idsFromRequest();
+         if (empty($ids)) $this->json(['success' => false, 'message' => 'Select rows to delete.'], 422);
+diff --git a/original/controllers/ReportController.php b/merged/controllers/ReportController.php
+index 5a3cc70..ebb4189 100644
+--- a/original/controllers/ReportController.php
++++ b/merged/controllers/ReportController.php
+@@ -4,7 +4,7 @@ class ReportController extends Controller
+ {
+     public function index(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $this->view('reports/index', [
+             'branches'          => (new Branch())->activeBranches(),
+             'loanStatuses'      => (new LoanStatus())->all('id ASC'),
+@@ -28,7 +28,7 @@ class ReportController extends Controller
+     // AJAX: GET /reports/generate
+     public function generate(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $summary = (new Loan())->reportSummary($this->filtersFromRequest());
+         $this->json(['success' => true] + $summary);
+     }
+@@ -40,7 +40,7 @@ class ReportController extends Controller
+     // always today.
+     public function paymentsDueToday(): void
+     {
+-        Auth::requireLogin();
++        Auth::requireStaff();
+         $data = (new Loan())->paymentsDueTodayByBranch();
+         $this->json(['success' => true] + $data);
+     }
+diff --git a/original/controllers/UserController.php b/merged/controllers/UserController.php
+index efe774a..e514e96 100644
+--- a/original/controllers/UserController.php
++++ b/merged/controllers/UserController.php
+@@ -5,8 +5,20 @@ class UserController extends Controller
+     public function index(): void
+     {
+         Auth::requireAdmin();
+-        $users = (new User())->all('full_name ASC');
+-        $this->view('users/index', ['users' => $users, 'csrf' => $this->csrfToken()]);
++        $users = (new User())->allWithBranchName();
++        $branches = (new Branch())->activeBranches();
++        $this->view('users/index', ['users' => $users, 'branches' => $branches, 'csrf' => $this->csrfToken()]);
++    }
++
++    private function validateRoleAndBranch(string $role, $branchId): array
++    {
++        $errors = [];
++        if (!in_array($role, ['Administrator', 'Operator', 'Branch'], true)) {
++            $errors['role'] = 'Invalid role.';
++        } elseif ($role === 'Branch' && empty($branchId)) {
++            $errors['branch_id'] = 'A Branch account must be assigned a branch.';
++        }
++        return $errors;
+     }
+ 
+     public function store(): void
+@@ -14,16 +26,16 @@ class UserController extends Controller
+         Auth::requireAdmin();
+         if (!$this->verifyCsrf()) $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
+ 
+-        $errors = [];
+         $fullName = trim($this->input('full_name', ''));
+         $username = trim($this->input('username', ''));
+         $password = (string) $this->input('password', '');
+         $role     = $this->input('role', 'Operator');
++        $branchId = $this->input('branch_id', '');
+ 
++        $errors = $this->validateRoleAndBranch($role, $branchId);
+         if ($fullName === '') $errors['full_name'] = 'Full name is required.';
+         if ($username === '') $errors['username'] = 'Username is required.';
+         if (strlen($password) < 6) $errors['password'] = 'Password must be at least 6 characters.';
+-        if (!in_array($role, ['Administrator', 'Operator'], true)) $errors['role'] = 'Invalid role.';
+ 
+         $userModel = new User();
+         if ($username !== '' && $userModel->usernameExists($username)) {
+@@ -33,7 +45,7 @@ class UserController extends Controller
+ 
+         $id = $userModel->create([
+             'full_name' => $fullName, 'username' => $username, 'password' => $password,
+-            'role' => $role, 'status' => 'Active',
++            'role' => $role, 'branch_id' => $branchId ?: null, 'status' => 'Active',
+         ]);
+         $this->json(['success' => true, 'id' => $id]);
+     }
+@@ -46,9 +58,10 @@ class UserController extends Controller
+         $fullName = trim($this->input('full_name', ''));
+         $username = trim($this->input('username', ''));
+         $role     = $this->input('role', 'Operator');
++        $branchId = $this->input('branch_id', '');
+         $status   = $this->input('status', 'Active');
+ 
+-        $errors = [];
++        $errors = $this->validateRoleAndBranch($role, $branchId);
+         if ($fullName === '') $errors['full_name'] = 'Full name is required.';
+         if ($username === '') $errors['username'] = 'Username is required.';
+ 
+@@ -59,7 +72,8 @@ class UserController extends Controller
+         if (!empty($errors)) $this->json(['success' => false, 'errors' => $errors], 422);
+ 
+         $ok = $userModel->update((int) $id, [
+-            'full_name' => $fullName, 'username' => $username, 'role' => $role, 'status' => $status,
++            'full_name' => $fullName, 'username' => $username, 'role' => $role,
++            'branch_id' => $branchId ?: null, 'status' => $status,
+         ]);
+         $this->json(['success' => $ok]);
+     }
+diff --git a/original/core/Auth.php b/merged/core/Auth.php
+index f132c8f..ff8964d 100644
+--- a/original/core/Auth.php
++++ b/merged/core/Auth.php
+@@ -13,10 +13,12 @@ class Auth
+ 
+         session_regenerate_id(true);
+         $_SESSION['user'] = [
+-            'id'        => $user['id'],
+-            'full_name' => $user['full_name'],
+-            'username'  => $user['username'],
+-            'role'      => $user['role'],
++            'id'          => $user['id'],
++            'full_name'   => $user['full_name'],
++            'username'    => $user['username'],
++            'role'        => $user['role'],
++            'branch_id'   => $user['branch_id'] ?? null,
++            'branch_name' => $user['branch_name'] ?? null,
+         ];
+         return true;
+     }
+@@ -37,6 +39,27 @@ class Auth
+ 
+     public static function isAdmin(): bool { return self::check() && $_SESSION['user']['role'] === 'Administrator'; }
+ 
++    public static function isBranch(): bool { return self::check() && $_SESSION['user']['role'] === 'Branch'; }
++
++    /**
++     * The branch a Branch-role account is locked to. Null for
++     * Administrator/Operator (they aren't restricted to one branch).
++     */
++    public static function branchId(): ?int
++    {
++        return self::check() && self::isBranch() ? (int) $_SESSION['user']['branch_id'] : null;
++    }
++
++    /**
++     * Where to send someone right after login / if they hit "/".
++     * Branch accounts don't have a Dashboard, so they land on the
++     * register instead.
++     */
++    public static function landingPath(): string
++    {
++        return self::isBranch() ? '/loans/register' : '/dashboard';
++    }
++
+     public static function requireLogin(): void
+     {
+         if (!self::check()) {
+@@ -54,4 +77,20 @@ class Auth
+             exit;
+         }
+     }
++
++    /**
++     * Administrator or Operator - i.e. NOT a Branch account. Use this to
++     * guard screens Branch accounts shouldn't reach at all (Dashboard,
++     * Reports, Branches, Exports, Client management) even if they guess
++     * the URL directly.
++     */
++    public static function requireStaff(): void
++    {
++        self::requireLogin();
++        if (self::isBranch()) {
++            http_response_code(403);
++            echo '403 - This area is restricted to Administrator/Operator accounts.';
++            exit;
++        }
++    }
+ }
+diff --git a/merged/database/migration_branch_accounts.sql b/merged/database/migration_branch_accounts.sql
+new file mode 100644
+index 0000000..90989f8
+--- /dev/null
++++ b/merged/database/migration_branch_accounts.sql
+@@ -0,0 +1,43 @@
++-- =====================================================================
++-- Migration: Branch-level accounts
++--
++-- Adds a third user role, 'Branch', for accounts tied to exactly one
++-- branch. A Branch account can capture and edit loans for its own
++-- branch only - it cannot change Loan Status / Repayment Status, run
++-- reports, manage other branches, manage users, or see other branches'
++-- data. Administrators and Operators are unaffected.
++--
++-- Run once on an existing database:
++--   psql -d loan_system -f database/migration_branch_accounts.sql
++-- (Also folded into database/schema.sql for brand-new installs.)
++-- Safe to re-run - every change is guarded.
++-- =====================================================================
++
++BEGIN;
++
++-- 1. Add branch_id to users (NULL for Administrator/Operator; required,
++--    enforced at the application layer, for role = 'Branch').
++ALTER TABLE users ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id);
++CREATE INDEX IF NOT EXISTS idx_users_branch ON users(branch_id);
++
++-- 2. Widen the role CHECK constraint to allow 'Branch'.
++--    (Constraint name follows Postgres's default naming; guarded so this
++--    is safe to re-run even if already applied.)
++DO $$
++BEGIN
++    IF EXISTS (
++        SELECT 1 FROM information_schema.table_constraints
++        WHERE table_name = 'users' AND constraint_name = 'users_role_check'
++    ) THEN
++        ALTER TABLE users DROP CONSTRAINT users_role_check;
++    END IF;
++    ALTER TABLE users ADD CONSTRAINT users_role_check
++        CHECK (role IN ('Administrator', 'Operator', 'Branch'));
++END $$;
++
++COMMIT;
++
++-- ---------------------------------------------------------------------
++-- Post-migration check (read-only, run manually):
++--   SELECT id, full_name, username, role, branch_id FROM users;
++-- ---------------------------------------------------------------------
+diff --git a/original/database/schema.sql b/merged/database/schema.sql
+index 6504a9c..605c64e 100644
+--- a/original/database/schema.sql
++++ b/merged/database/schema.sql
+@@ -20,11 +20,13 @@ CREATE TABLE users (
+     username        VARCHAR(60)  NOT NULL UNIQUE,
+     password_hash   VARCHAR(255) NOT NULL,
+     role            VARCHAR(20)  NOT NULL DEFAULT 'Operator'
+-                    CHECK (role IN ('Administrator','Operator')),
++                    CHECK (role IN ('Administrator','Operator','Branch')),
++    branch_id       INTEGER, -- FK added below, after the branches table exists
+     status          VARCHAR(20)  NOT NULL DEFAULT 'Active'
+                     CHECK (status IN ('Active','Inactive')),
+     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+ );
++CREATE INDEX idx_users_branch ON users(branch_id);
+ 
+ -- ---------------------------------------------------------------------
+ -- Branches
+@@ -37,6 +39,8 @@ CREATE TABLE branches (
+     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+ );
+ 
++ALTER TABLE users ADD CONSTRAINT users_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches(id);
++
+ -- ---------------------------------------------------------------------
+ -- Loan Statuses (lookup)
+ -- ---------------------------------------------------------------------
+diff --git a/original/database/seed.sql b/merged/database/seed.sql
+index 76d11df..f051d8a 100644
+--- a/original/database/seed.sql
++++ b/merged/database/seed.sql
+@@ -51,3 +51,17 @@ INSERT INTO banks (bank_name, branch_code) VALUES
+ 
+ INSERT INTO daily_counters (counter_date, last_value) VALUES (CURRENT_DATE, 0)
+ ON CONFLICT (counter_date) DO NOTHING;
++
++-- ---------------------------------------------------------------------
++-- Example: creating a Branch account (commented out - not run automatically,
++-- since this file has already been run against a live database).
++-- 1. Generate a hash:  php public/tools/make_hash.php "SomePassword123"
++-- 2. Find the branch's id:  SELECT id, branch_name FROM branches;
++-- 3. Insert, using that hash and branch id:
++--
++-- INSERT INTO users (full_name, username, password_hash, role, branch_id, status)
++-- VALUES ('Durban Branch', 'durban.branch', '<paste generated hash>', 'Branch', 1, 'Active');
++--
++-- Or simply use the User Management screen (Administrator login required) -
++-- Add User -> Role: Branch -> pick the branch from the dropdown.
++-- ---------------------------------------------------------------------
+diff --git a/original/models/User.php b/merged/models/User.php
+index c655e50..ab52af9 100644
+--- a/original/models/User.php
++++ b/merged/models/User.php
+@@ -6,20 +6,42 @@ class User extends Model
+ 
+     public function findByUsername(string $username): ?array
+     {
+-        $row = $this->query("SELECT * FROM users WHERE username = :u", ['u' => $username])->fetch();
++        $row = $this->query(
++            "SELECT u.*, b.branch_name
++             FROM users u
++             LEFT JOIN branches b ON b.id = u.branch_id
++             WHERE u.username = :u",
++            ['u' => $username]
++        )->fetch();
+         return $row ?: null;
+     }
+ 
++    /**
++     * All users with their assigned branch name (for Branch-role accounts;
++     * NULL branch_name for Administrator/Operator). Used by the User
++     * Management screen.
++     */
++    public function allWithBranchName(): array
++    {
++        return $this->query(
++            "SELECT u.*, b.branch_name
++             FROM users u
++             LEFT JOIN branches b ON b.id = u.branch_id
++             ORDER BY u.full_name ASC"
++        )->fetchAll();
++    }
++
+     public function create(array $d): int
+     {
+         $this->query(
+-            "INSERT INTO users (full_name, username, password_hash, role, status)
+-             VALUES (:full_name, :username, :password_hash, :role, :status)",
++            "INSERT INTO users (full_name, username, password_hash, role, branch_id, status)
++             VALUES (:full_name, :username, :password_hash, :role, :branch_id, :status)",
+             [
+                 'full_name'     => $d['full_name'],
+                 'username'      => $d['username'],
+                 'password_hash' => password_hash($d['password'], PASSWORD_BCRYPT),
+                 'role'          => $d['role'],
++                'branch_id'     => $d['role'] === 'Branch' ? $d['branch_id'] : null,
+                 'status'        => $d['status'] ?? 'Active',
+             ]
+         );
+@@ -29,12 +51,14 @@ class User extends Model
+     public function update(int $id, array $d): bool
+     {
+         return $this->query(
+-            "UPDATE users SET full_name = :full_name, username = :username, role = :role, status = :status
++            "UPDATE users SET full_name = :full_name, username = :username, role = :role,
++                branch_id = :branch_id, status = :status
+              WHERE id = :id",
+             [
+                 'full_name' => $d['full_name'],
+                 'username'  => $d['username'],
+                 'role'      => $d['role'],
++                'branch_id' => $d['role'] === 'Branch' ? $d['branch_id'] : null,
+                 'status'    => $d['status'],
+                 'id'        => $id,
+             ]
+diff --git a/original/public/assets/js/capture.js b/merged/public/assets/js/capture.js
+index b79d535..b67186b 100644
+--- a/original/public/assets/js/capture.js
++++ b/merged/public/assets/js/capture.js
+@@ -44,9 +44,16 @@ document.addEventListener('DOMContentLoaded', function () {
+                 document.getElementById('budgetAllocated').textContent = fmtMoney(data.branch.allocated);
+                 document.getElementById('budgetSpent').textContent     = fmtMoney(data.branch.spent);
+                 document.getElementById('budgetRemaining').textContent = fmtMoney(data.branch.remaining);
+-                document.getElementById('companyBudgetSummary').textContent =
+-                    'Allocated ' + fmtMoney(data.company.allocated) + ' · Spent ' + fmtMoney(data.company.spent) +
+-                    ' · Remaining ' + fmtMoney(data.company.remaining);
++
++                const companyLine = document.getElementById('companyBudgetLine');
++                if (data.company) {
++                    companyLine.classList.remove('d-none');
++                    document.getElementById('companyBudgetSummary').textContent =
++                        'Allocated ' + fmtMoney(data.company.allocated) + ' · Spent ' + fmtMoney(data.company.spent) +
++                        ' · Remaining ' + fmtMoney(data.company.remaining);
++                } else {
++                    companyLine.classList.add('d-none');
++                }
+ 
+                 const pct = data.branch.allocated > 0 ? Math.min(100, (data.branch.spent / data.branch.allocated) * 100) : 0;
+                 const bar = document.getElementById('budgetProgressBar');
+@@ -66,6 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
+ 
+     branchSelect.addEventListener('change', refreshBudgetStatus);
+     dateLoadedInput.addEventListener('change', refreshBudgetStatus);
++    if (branchSelect.value) refreshBudgetStatus(); // pre-selected (e.g. Branch accounts) - show immediately
+     amountInput.addEventListener('input', function () {
+         const remainingText = document.getElementById('budgetRemaining').textContent;
+         const remaining = parseFloat(remainingText.replace(/[^0-9.-]/g, '')) || 0;
+diff --git a/original/public/assets/js/register.js b/merged/public/assets/js/register.js
+index f5bbe63..cc02777 100644
+--- a/original/public/assets/js/register.js
++++ b/merged/public/assets/js/register.js
+@@ -86,9 +86,10 @@ $(function () {
+             { data: 'date_loaded', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
+             {
+                 data: 'id', orderable: false, className: 'text-nowrap',
+-                render: (id) => `
+-                    <button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>
+-                    <button class="btn btn-sm btn-outline-danger delete-loan-btn" data-id="${id}"><i class="bi bi-trash"></i></button>`
++                render: (id) => window.IS_BRANCH
++                    ? `<button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>`
++                    : `<button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>
++                       <button class="btn btn-sm btn-outline-danger delete-loan-btn" data-id="${id}"><i class="bi bi-trash"></i></button>`
+             },
+         ],
+         drawCallback: function () {
+@@ -199,21 +200,25 @@ $('#deleteSelectedBtn').on('click', async function () {
+     $('#loanTable tbody').on('click', '.edit-loan-btn', function () {
+         const id = $(this).data('id');
+         $.get(window.APP_URL + '/loans/' + id + '/edit', { _: Date.now() }, function (res) {
+-            if (!res.success) { Toast.warning('Loan not found.'); return; }
++            if (!res.success) { Toast.warning(res.message || 'Loan not found.'); return; }
+             const l = res.loan;
+             $('#edit_loan_id').val(l.id);
+             $('#edit_amount').val(l.amount);
+-            $('#edit_branch_id').val(l.branch_id);
+-
+             $('#edit_action_date').val(l.action_date);
+-            $('#edit_loan_status_id').val(l.loan_status_id);
+             $('#edit_date_loaded').val(l.date_loaded ? String(l.date_loaded).slice(0, 10) : '');
+-
+-            $('#edit_repayment_status_id').val(l.repayment_status_id);
+             $('#edit_workplace_name').val(l.workplace_name || '');
+             $('#edit_work_contact').val(l.work_contact || '');
+             $('#edit_bank_id').val(l.bank_id || '');
+             $('#edit_notes').val(l.notes || '');
++
++            if (window.IS_BRANCH) {
++                $('#edit_loan_status_display').val(l.status || '');
++                $('#edit_repayment_status_display').val(l.repayment_status || '');
++            } else {
++                $('#edit_branch_id').val(l.branch_id);
++                $('#edit_loan_status_id').val(l.loan_status_id);
++                $('#edit_repayment_status_id').val(l.repayment_status_id);
++            }
+             refreshEditCalculatedFigures();
+             new bootstrap.Modal(document.getElementById('editLoanModal')).show();
+         });
+diff --git a/original/public/assets/js/users.js b/merged/public/assets/js/users.js
+index ceace09..a4c1713 100644
+--- a/original/public/assets/js/users.js
++++ b/merged/public/assets/js/users.js
+@@ -1,4 +1,12 @@
+ $(function () {
++    function toggleBranchWrap(roleSelectId, wrapId) {
++        const role = $(roleSelectId).val();
++        $(wrapId).toggleClass('d-none', role !== 'Branch');
++    }
++
++    $('#newRole').on('change', () => toggleBranchWrap('#newRole', '#newBranchWrap'));
++    $('#editRole').on('change', () => toggleBranchWrap('#editRole', '#editBranchWrap'));
++
+     $('#saveUserBtn').on('click', function () {
+         const payload = {
+             csrf_token: window.CSRF_TOKEN,
+@@ -6,6 +14,7 @@ $(function () {
+             username: $('#newUsername').val().trim(),
+             password: $('#newPassword').val(),
+             role: $('#newRole').val(),
++            branch_id: $('#newRole').val() === 'Branch' ? $('#newBranchId').val() : '',
+         };
+         $.post(window.APP_URL + '/users', payload, function (res) {
+             if (res.success) location.reload();
+@@ -20,7 +29,9 @@ $(function () {
+         $('#editFullName').val($(this).data('name'));
+         $('#editUsername').val($(this).data('username'));
+         $('#editRole').val($(this).data('role'));
++        $('#editBranchId').val($(this).data('branch-id') || '');
+         $('#editStatus').val($(this).data('status'));
++        toggleBranchWrap('#editRole', '#editBranchWrap');
+         new bootstrap.Modal(document.getElementById('editUserModal')).show();
+     });
+ 
+@@ -31,6 +42,7 @@ $(function () {
+             full_name: $('#editFullName').val().trim(),
+             username: $('#editUsername').val().trim(),
+             role: $('#editRole').val(),
++            branch_id: $('#editRole').val() === 'Branch' ? $('#editBranchId').val() : '',
+             status: $('#editStatus').val(),
+         };
+         $.post(window.APP_URL + '/users/' + id + '/update', payload, function (res) {
+@@ -59,9 +71,8 @@ $(function () {
+ 
+     $('.toggle-user-btn').on('click', async function () {
+         const id = $(this).data('id');
+-        const ok = await Toast.confirm('Change status of this user?', { type: 'warning', confirmLabel: 'Confirmtion' });
++        const ok = await Toast.confirm('Change status of this user?', { type: 'warning', confirmLabel: 'Confirm' });
+         if (!ok) return;
+-        // if (!confirm('Change status of this user?')) return;
+         $.post(window.APP_URL + '/users/' + id + '/toggle', { csrf_token: window.CSRF_TOKEN }, function (res) {
+             if (res.success) location.reload(); else Toast.error('Action failed.');
+         });
+diff --git a/original/views/layouts/app.php b/merged/views/layouts/app.php
+index d747f97..d988c11 100644
+--- a/original/views/layouts/app.php
++++ b/merged/views/layouts/app.php
+@@ -32,20 +32,23 @@
+             <div class="user-avatar"><?= strtoupper(substr(Auth::user()['full_name'] ?? 'U', 0, 1)) ?></div>
+             <div>
+                 <div class="user-name"><?= htmlspecialchars(Auth::user()['full_name'] ?? '') ?></div>
+-                <div class="user-role"><?= htmlspecialchars(Auth::user()['role'] ?? '') ?></div>
++                <div class="user-role"><?= htmlspecialchars(Auth::user()['role'] ?? '') ?><?= Auth::isBranch() && Auth::user()['branch_name'] ? ' - ' . htmlspecialchars(Auth::user()['branch_name']) : '' ?></div>
+             </div>
+         </div>
+ 
+         <nav class="sidebar-nav">
++            <?php if (!Auth::isBranch()): ?>
+             <a href="<?= APP_URL ?>/dashboard" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/dashboard')?'active':'' ?>">
+                 <i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span>
+             </a>
++            <?php endif; ?>
+             <a href="<?= APP_URL ?>/loans/capture" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/loans/capture')?'active':'' ?>">
+                 <i class="bi bi-plus-square-fill"></i><span>Capture Loan</span>
+             </a>
+             <a href="<?= APP_URL ?>/loans/register" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/loans/register')?'active':'' ?>">
+                 <i class="bi bi-table"></i><span>Loan Register</span>
+             </a>
++            <?php if (!Auth::isBranch()): ?>
+             <a href="<?= APP_URL ?>/clients" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/clients')?'active':'' ?>">
+                 <i class="bi bi-person-lines-fill"></i><span>Clients</span>
+             </a>
+@@ -55,6 +58,7 @@
+             <a href="<?= APP_URL ?>/branches" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/branches')?'active':'' ?>">
+                 <i class="bi bi-diagram-3-fill"></i><span>Branches</span>
+             </a>
++            <?php endif; ?>
+             <?php if (Auth::isAdmin()): ?>
+             <a href="<?= APP_URL ?>/budgets" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/budgets')?'active':'' ?>">
+                 <i class="bi bi-wallet2"></i><span>Branch Budgets</span>
+diff --git a/original/views/loans/capture.php b/merged/views/loans/capture.php
+index d6a8f50..155509f 100644
+--- a/original/views/loans/capture.php
++++ b/merged/views/loans/capture.php
+@@ -1,4 +1,4 @@
+-<?php $pageTitle = 'Capture Loan'; ?>
++<?php $pageTitle = 'Capture Loan'; $isBranch = Auth::isBranch(); ?>
+ 
+ <div class="d-flex justify-content-end mb-3">
+     <a href="<?= APP_URL ?>/loans/register" class="btn btn-outline-brand btn-sm">
+@@ -88,12 +88,15 @@
+                     </div>
+                     <div class="col-md-4">
+                         <label class="form-label">Branch *</label>
+-                        <select class="form-select" name="branch_id" required>
++                        <select class="form-select" name="branch_id" required <?= $isBranch ? 'disabled' : '' ?>>
+                             <option value="">Select branch</option>
+                             <?php foreach ($branches as $b): ?>
+-                                <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
++                                <option value="<?= $b['id'] ?>" <?= ($isBranch && $b['id'] == Auth::branchId()) ? 'selected' : '' ?>><?= htmlspecialchars($b['branch_name']) ?></option>
+                             <?php endforeach; ?>
+                         </select>
++                        <?php if ($isBranch): ?>
++                            <div class="form-text">Locked to your branch.</div>
++                        <?php endif; ?>
+                         <div class="invalid-feedback" data-error-for="branch_id"></div>
+                     </div>
+ 
+@@ -108,6 +111,15 @@
+                         <div class="form-text">Backdate this if you're capturing a loan from a previous month.</div>
+                         <div class="invalid-feedback" data-error-for="date_loaded"></div>
+                     </div>
++                    <?php if ($isBranch): ?>
++                    <div class="col-md-8">
++                        <label class="form-label">Loan Status &amp; Repayment Status</label>
++                        <div class="form-control-plaintext text-muted small">
++                            <i class="bi bi-lock-fill"></i> New loans start as <strong>Pending Review</strong> / <strong>Not Due</strong>.
++                            An administrator updates the status from here once it's reviewed.
++                        </div>
++                    </div>
++                    <?php else: ?>
+                     <div class="col-md-4">
+                         <label class="form-label">Loan Status *</label>
+                         <select class="form-select" name="loan_status_id" required>
+@@ -128,6 +140,7 @@
+                         </select>
+                         <div class="invalid-feedback" data-error-for="repayment_status_id"></div>
+                     </div>
++                    <?php endif; ?>
+                 </div>
+ 
+                 <div class="budget-status-box mt-3 d-none" id="budgetStatusBox">
+@@ -149,7 +162,7 @@
+                     <div id="budgetWarning" class="text-danger small mt-2 d-none">
+                         <i class="bi bi-exclamation-triangle-fill"></i> This amount exceeds the branch's remaining budget for this month.
+                     </div>
+-                    <div class="text-muted small mt-2">
++                    <div id="companyBudgetLine" class="text-muted small mt-2">
+                         Company-wide this month: <span id="companyBudgetSummary">-</span>
+                     </div>
+                     <div class="text-muted small mt-1">
+diff --git a/original/views/loans/register.php b/merged/views/loans/register.php
+index 20a30a7..0eee245 100644
+--- a/original/views/loans/register.php
++++ b/merged/views/loans/register.php
+@@ -1,7 +1,8 @@
+-<?php $pageTitle = 'Loan Register'; ?>
++<?php $pageTitle = 'Loan Register'; $isBranch = Auth::isBranch(); ?>
+ 
+ <div class="panel-card mb-3">
+     <div class="row g-2">
++        <?php if (!$isBranch): ?>
+         <div class="col-6 col-md-3 col-lg-2">
+             <label class="form-label small">Branch</label>
+             <select class="form-select form-select-sm" id="f_branch_id">
+@@ -11,6 +12,7 @@
+                 <?php endforeach; ?>
+             </select>
+         </div>
++        <?php endif; ?>
+         <div class="col-6 col-md-3 col-lg-2">
+             <label class="form-label small">Group</label>
+             <select class="form-select form-select-sm" id="f_loan_group">
+@@ -29,7 +31,7 @@
+                 <?php endforeach; ?>
+             </select>
+         </div>
+-               <div class="col-6 col-md-3 col-lg-2">
++        <div class="col-6 col-md-3 col-lg-2">
+             <label class="form-label small">Repayment Status</label>
+             <select class="form-select form-select-sm" id="f_repayment_status_id">
+                 <option value="">All Repayment Statuses</option>
+@@ -111,6 +113,7 @@
+ 
+     <div class="bulk-action-bar" id="bulkActionBar">
+         <span id="selectedCount" class="me-2 fw-semibold">0 rows selected</span>
++        <?php if (!$isBranch): ?>
+         <button class="btn btn-success btn-sm" id="exportSelectedBtn"><i class="bi bi-file-earmark-excel"></i> Export Selected</button>
+         <button class="btn btn-outline-brand btn-sm" id="exportFilteredBtn"><i class="bi bi-file-earmark-excel"></i> Export Filtered</button>
+         <div class="btn-group btn-group-sm">
+@@ -128,8 +131,11 @@
+             </ul>
+         </div>
+         <button class="btn btn-info btn-sm text-white" id="changeStatusBtn" data-bs-toggle="modal" data-bs-target="#changeStatusModal"><i class="bi bi-arrow-repeat"></i> Change Status</button>
+-        <button class="btn btn-secondary btn-sm" id="changeReportStatusBtn" data-bs-toggle="modal" data-bs-target="#changeReportStatusModal"><i class="bi bi-send-check"></i> Change Report Status</button>
++        <button class="btn btn-secondary btn-sm" id="changeRepaymentStatusBtn" data-bs-toggle="modal" data-bs-target="#changeRepaymentStatusModal"><i class="bi bi-send-check"></i> Change Repayment Status</button>
+         <button class="btn btn-danger btn-sm" id="deleteSelectedBtn"><i class="bi bi-trash"></i> Delete</button>
++        <?php else: ?>
++        <span class="text-muted small"><i class="bi bi-info-circle"></i> Status changes, deletes, and exports are handled by an administrator.</span>
++        <?php endif; ?>
+     </div>
+ </div>
+ 
+@@ -148,15 +154,15 @@
+                     <input type="number" step="0.01" min="0" class="form-control" name="amount" id="edit_amount" required>
+                 </div>
+                 <div class="col-md-6">
+-                    <label class="form-label">Branch *</label>
+-                    <select class="form-select" name="branch_id" id="edit_branch_id" required>
+-                        <?php foreach ($branches as $b): ?><option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option><?php endforeach; ?>
+-                    </select>
++                    <label class="form-label">Branch <?= $isBranch ? '' : '*' ?></label>
++                    <?php if ($isBranch): ?>
++                        <input type="text" class="form-control" value="<?= htmlspecialchars(Auth::user()['branch_name'] ?? '') ?>" disabled>
++                    <?php else: ?>
++                        <select class="form-select" name="branch_id" id="edit_branch_id" required>
++                            <?php foreach ($branches as $b): ?><option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option><?php endforeach; ?>
++                        </select>
++                    <?php endif; ?>
+                 </div>
+-                <!-- <div class="col-md-6">
+-                    <label class="form-label">Action Date *</label>
+-                    <input type="date" class="form-control" name="action_date" id="edit_action_date" required>
+-                </div> -->
+                 <div class="col-md-6">
+                     <label class="form-label">Action Date * <span class="text-muted fw-normal">(payment due date)</span></label>
+                     <input type="date" class="form-control" name="action_date" id="edit_action_date" required>
+@@ -166,16 +172,26 @@
+                     <input type="date" class="form-control" name="date_loaded" id="edit_date_loaded" required>
+                 </div>
+                 <div class="col-md-6">
+-                    <label class="form-label">Status *</label>
+-                    <select class="form-select" name="loan_status_id" id="edit_loan_status_id" required>
+-                        <?php foreach ($loanStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+-                    </select>
++                    <label class="form-label">Status <?= $isBranch ? '' : '*' ?></label>
++                    <?php if ($isBranch): ?>
++                        <input type="text" class="form-control" id="edit_loan_status_display" disabled>
++                        <div class="form-text">Set by an administrator.</div>
++                    <?php else: ?>
++                        <select class="form-select" name="loan_status_id" id="edit_loan_status_id" required>
++                            <?php foreach ($loanStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
++                        </select>
++                    <?php endif; ?>
+                 </div>
+-                      <div class="col-md-6">
+-                    <label class="form-label">Repayment Status *</label>
+-                    <select class="form-select" name="repayment_status_id" id="edit_repayment_status_id" required>
+-                        <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+-                    </select>
++                <div class="col-md-6">
++                    <label class="form-label">Repayment Status <?= $isBranch ? '' : '*' ?></label>
++                    <?php if ($isBranch): ?>
++                        <input type="text" class="form-control" id="edit_repayment_status_display" disabled>
++                        <div class="form-text">Set by an administrator.</div>
++                    <?php else: ?>
++                        <select class="form-select" name="repayment_status_id" id="edit_repayment_status_id" required>
++                            <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
++                        </select>
++                    <?php endif; ?>
+                 </div>
+                 <div class="col-md-6">
+                     <label class="form-label">Workplace Name</label>
+@@ -216,6 +232,7 @@
+   </div>
+ </div>
+ 
++<?php if (!$isBranch): ?>
+ <!-- Bulk Change Status Modal -->
+ <div class="modal fade" id="changeStatusModal" tabindex="-1">
+   <div class="modal-dialog modal-dialog-centered">
+@@ -235,23 +252,24 @@
+   </div>
+ </div>
+ 
+-<!-- Bulk Change Report Status Modal -->
+-<div class="modal fade" id="changeReportStatusModal" tabindex="-1">
++<!-- Bulk Change Repayment Status Modal -->
++<div class="modal fade" id="changeRepaymentStatusModal" tabindex="-1">
+   <div class="modal-dialog modal-dialog-centered">
+     <div class="modal-content">
+-      <div class="modal-header"><h5 class="modal-title">Change Report Status</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
++      <div class="modal-header"><h5 class="modal-title">Change Repayment Status</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+       <div class="modal-body">
+-        <label class="form-label">New Report Status</label>
+-        <select class="form-select" id="bulkReportStatusSelect">
+-            <?php foreach ($reportStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
++        <label class="form-label">New Repayment Status</label>
++        <select class="form-select" id="bulkRepaymentStatusSelect">
++            <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+         </select>
+       </div>
+       <div class="modal-footer">
+         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+-        <button class="btn btn-primary-brand" id="applyBulkReportStatusBtn">Apply</button>
++        <button class="btn btn-primary-brand" id="applyBulkRepaymentStatusBtn">Apply</button>
+       </div>
+     </div>
+   </div>
+ </div>
++<?php endif; ?>
+ 
+-<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '";</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>
++<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>
+diff --git a/original/views/users/index.php b/merged/views/users/index.php
+index 398cff3..7f9443e 100644
+--- a/original/views/users/index.php
++++ b/merged/views/users/index.php
+@@ -7,7 +7,7 @@
+ <div class="panel-card">
+     <div class="table-responsive">
+         <table class="table table-clean align-middle">
+-            <thead><tr><th>#</th><th>Full Name</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
++            <thead><tr><th>#</th><th>Full Name</th><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+             <tbody>
+             <?php foreach ($users as $i => $u): ?>
+                 <tr data-id="<?= $u['id'] ?>">
+@@ -15,12 +15,14 @@
+                     <td><?= htmlspecialchars($u['full_name']) ?></td>
+                     <td><?= htmlspecialchars($u['username']) ?></td>
+                     <td><span class="badge-status status-role"><?= $u['role'] ?></span></td>
++                    <td><?= $u['branch_name'] ? htmlspecialchars($u['branch_name']) : '<span class="text-muted">-</span>' ?></td>
+                     <td><span class="badge-status status-<?= strtolower($u['status']) ?>"><?= $u['status'] ?></span></td>
+                     <td><?= date('d M Y', strtotime($u['created_at'])) ?></td>
+                     <td>
+                         <button class="btn btn-sm btn-outline-brand edit-user-btn"
+                             data-id="<?= $u['id'] ?>" data-name="<?= htmlspecialchars($u['full_name']) ?>"
+-                            data-username="<?= htmlspecialchars($u['username']) ?>" data-role="<?= $u['role'] ?>" data-status="<?= $u['status'] ?>">
++                            data-username="<?= htmlspecialchars($u['username']) ?>" data-role="<?= $u['role'] ?>"
++                            data-branch-id="<?= $u['branch_id'] ?? '' ?>" data-status="<?= $u['status'] ?>">
+                             <i class="bi bi-pencil"></i>
+                         </button>
+                         <button class="btn btn-sm btn-outline-secondary reset-pw-btn" data-id="<?= $u['id'] ?>"><i class="bi bi-key"></i></button>
+@@ -42,7 +44,21 @@
+         <div class="mb-3"><label class="form-label">Username *</label><input type="text" class="form-control" id="newUsername"></div>
+         <div class="mb-3"><label class="form-label">Password *</label><input type="password" class="form-control" id="newPassword"></div>
+         <div class="mb-3"><label class="form-label">Role *</label>
+-            <select class="form-select" id="newRole"><option value="Operator">Operator</option><option value="Administrator">Administrator</option></select>
++            <select class="form-select" id="newRole">
++                <option value="Operator">Operator</option>
++                <option value="Administrator">Administrator</option>
++                <option value="Branch">Branch</option>
++            </select>
++        </div>
++        <div class="mb-3 d-none" id="newBranchWrap">
++            <label class="form-label">Branch *</label>
++            <select class="form-select" id="newBranchId">
++                <option value="">Select branch</option>
++                <?php foreach ($branches as $b): ?>
++                    <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
++                <?php endforeach; ?>
++            </select>
++            <div class="form-text">This account will only see and manage loans for this branch.</div>
+         </div>
+       </div>
+       <div class="modal-footer">
+@@ -62,7 +78,20 @@
+         <div class="mb-3"><label class="form-label">Full Name *</label><input type="text" class="form-control" id="editFullName"></div>
+         <div class="mb-3"><label class="form-label">Username *</label><input type="text" class="form-control" id="editUsername"></div>
+         <div class="mb-3"><label class="form-label">Role *</label>
+-            <select class="form-select" id="editRole"><option value="Operator">Operator</option><option value="Administrator">Administrator</option></select>
++            <select class="form-select" id="editRole">
++                <option value="Operator">Operator</option>
++                <option value="Administrator">Administrator</option>
++                <option value="Branch">Branch</option>
++            </select>
++        </div>
++        <div class="mb-3 d-none" id="editBranchWrap">
++            <label class="form-label">Branch *</label>
++            <select class="form-select" id="editBranchId">
++                <option value="">Select branch</option>
++                <?php foreach ($branches as $b): ?>
++                    <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
++                <?php endforeach; ?>
++            </select>
+         </div>
+         <div class="mb-3"><label class="form-label">Status</label>
+             <select class="form-select" id="editStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
