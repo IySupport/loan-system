@@ -6,20 +6,42 @@ class User extends Model
 
     public function findByUsername(string $username): ?array
     {
-        $row = $this->query("SELECT * FROM users WHERE username = :u", ['u' => $username])->fetch();
+        $row = $this->query(
+            "SELECT u.*, b.branch_name
+             FROM users u
+             LEFT JOIN branches b ON b.id = u.branch_id
+             WHERE u.username = :u",
+            ['u' => $username]
+        )->fetch();
         return $row ?: null;
+    }
+
+    /**
+     * All users with their assigned branch name (for Branch-role accounts;
+     * NULL branch_name for Administrator/Operator). Used by the User
+     * Management screen.
+     */
+    public function allWithBranchName(): array
+    {
+        return $this->query(
+            "SELECT u.*, b.branch_name
+             FROM users u
+             LEFT JOIN branches b ON b.id = u.branch_id
+             ORDER BY u.full_name ASC"
+        )->fetchAll();
     }
 
     public function create(array $d): int
     {
         $this->query(
-            "INSERT INTO users (full_name, username, password_hash, role, status)
-             VALUES (:full_name, :username, :password_hash, :role, :status)",
+            "INSERT INTO users (full_name, username, password_hash, role, branch_id, status)
+             VALUES (:full_name, :username, :password_hash, :role, :branch_id, :status)",
             [
                 'full_name'     => $d['full_name'],
                 'username'      => $d['username'],
                 'password_hash' => password_hash($d['password'], PASSWORD_BCRYPT),
                 'role'          => $d['role'],
+                'branch_id'     => $d['role'] === 'Branch' ? $d['branch_id'] : null,
                 'status'        => $d['status'] ?? 'Active',
             ]
         );
@@ -29,12 +51,14 @@ class User extends Model
     public function update(int $id, array $d): bool
     {
         return $this->query(
-            "UPDATE users SET full_name = :full_name, username = :username, role = :role, status = :status
+            "UPDATE users SET full_name = :full_name, username = :username, role = :role,
+                branch_id = :branch_id, status = :status
              WHERE id = :id",
             [
                 'full_name' => $d['full_name'],
                 'username'  => $d['username'],
                 'role'      => $d['role'],
+                'branch_id' => $d['role'] === 'Branch' ? $d['branch_id'] : null,
                 'status'    => $d['status'],
                 'id'        => $id,
             ]

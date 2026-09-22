@@ -7,7 +7,7 @@
 <div class="panel-card">
     <div class="table-responsive">
         <table class="table table-clean align-middle">
-            <thead><tr><th>#</th><th>Full Name</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>#</th><th>Full Name</th><th>Username</th><th>Role</th><th>Branch</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>
             <?php foreach ($users as $i => $u): ?>
                 <tr data-id="<?= $u['id'] ?>">
@@ -15,12 +15,14 @@
                     <td><?= htmlspecialchars($u['full_name']) ?></td>
                     <td><?= htmlspecialchars($u['username']) ?></td>
                     <td><span class="badge-status status-role"><?= $u['role'] ?></span></td>
+                    <td><?= $u['branch_name'] ? htmlspecialchars($u['branch_name']) : '<span class="text-muted">-</span>' ?></td>
                     <td><span class="badge-status status-<?= strtolower($u['status']) ?>"><?= $u['status'] ?></span></td>
                     <td><?= date('d M Y', strtotime($u['created_at'])) ?></td>
                     <td>
                         <button class="btn btn-sm btn-outline-brand edit-user-btn"
                             data-id="<?= $u['id'] ?>" data-name="<?= htmlspecialchars($u['full_name']) ?>"
-                            data-username="<?= htmlspecialchars($u['username']) ?>" data-role="<?= $u['role'] ?>" data-status="<?= $u['status'] ?>">
+                            data-username="<?= htmlspecialchars($u['username']) ?>" data-role="<?= $u['role'] ?>"
+                            data-branch-id="<?= $u['branch_id'] ?? '' ?>" data-status="<?= $u['status'] ?>">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-secondary reset-pw-btn" data-id="<?= $u['id'] ?>"><i class="bi bi-key"></i></button>
@@ -42,7 +44,21 @@
         <div class="mb-3"><label class="form-label">Username *</label><input type="text" class="form-control" id="newUsername"></div>
         <div class="mb-3"><label class="form-label">Password *</label><input type="password" class="form-control" id="newPassword"></div>
         <div class="mb-3"><label class="form-label">Role *</label>
-            <select class="form-select" id="newRole"><option value="Operator">Operator</option><option value="Administrator">Administrator</option></select>
+            <select class="form-select" id="newRole">
+                <option value="Operator">Operator</option>
+                <option value="Administrator">Administrator</option>
+                <option value="Branch">Branch</option>
+            </select>
+        </div>
+        <div class="mb-3 d-none" id="newBranchWrap">
+            <label class="form-label">Branch *</label>
+            <select class="form-select" id="newBranchId">
+                <option value="">Select branch</option>
+                <?php foreach ($branches as $b): ?>
+                    <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="form-text">This account will only see and manage loans for this branch.</div>
         </div>
       </div>
       <div class="modal-footer">
@@ -62,7 +78,20 @@
         <div class="mb-3"><label class="form-label">Full Name *</label><input type="text" class="form-control" id="editFullName"></div>
         <div class="mb-3"><label class="form-label">Username *</label><input type="text" class="form-control" id="editUsername"></div>
         <div class="mb-3"><label class="form-label">Role *</label>
-            <select class="form-select" id="editRole"><option value="Operator">Operator</option><option value="Administrator">Administrator</option></select>
+            <select class="form-select" id="editRole">
+                <option value="Operator">Operator</option>
+                <option value="Administrator">Administrator</option>
+                <option value="Branch">Branch</option>
+            </select>
+        </div>
+        <div class="mb-3 d-none" id="editBranchWrap">
+            <label class="form-label">Branch *</label>
+            <select class="form-select" id="editBranchId">
+                <option value="">Select branch</option>
+                <?php foreach ($branches as $b): ?>
+                    <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
         <div class="mb-3"><label class="form-label">Status</label>
             <select class="form-select" id="editStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>

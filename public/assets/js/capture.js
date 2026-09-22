@@ -44,9 +44,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('budgetAllocated').textContent = fmtMoney(data.branch.allocated);
                 document.getElementById('budgetSpent').textContent     = fmtMoney(data.branch.spent);
                 document.getElementById('budgetRemaining').textContent = fmtMoney(data.branch.remaining);
-                document.getElementById('companyBudgetSummary').textContent =
-                    'Allocated ' + fmtMoney(data.company.allocated) + ' · Spent ' + fmtMoney(data.company.spent) +
-                    ' · Remaining ' + fmtMoney(data.company.remaining);
+
+                const companyLine = document.getElementById('companyBudgetLine');
+                if (data.company) {
+                    companyLine.classList.remove('d-none');
+                    document.getElementById('companyBudgetSummary').textContent =
+                        'Allocated ' + fmtMoney(data.company.allocated) + ' · Spent ' + fmtMoney(data.company.spent) +
+                        ' · Remaining ' + fmtMoney(data.company.remaining);
+                } else {
+                    companyLine.classList.add('d-none');
+                }
 
                 const pct = data.branch.allocated > 0 ? Math.min(100, (data.branch.spent / data.branch.allocated) * 100) : 0;
                 const bar = document.getElementById('budgetProgressBar');
@@ -66,6 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     branchSelect.addEventListener('change', refreshBudgetStatus);
     dateLoadedInput.addEventListener('change', refreshBudgetStatus);
+    if (branchSelect.value) refreshBudgetStatus(); // pre-selected (e.g. Branch accounts) - show immediately
     amountInput.addEventListener('input', function () {
         const remainingText = document.getElementById('budgetRemaining').textContent;
         const remaining = parseFloat(remainingText.replace(/[^0-9.-]/g, '')) || 0;

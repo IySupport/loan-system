@@ -79,7 +79,7 @@ class ClientController extends Controller
     // ---------------------------------------------------------------
     public function index(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $this->view('clients/index', [
             'csrf' => $this->csrfToken(),
         ]);
@@ -88,7 +88,7 @@ class ClientController extends Controller
     // AJAX server-side data source for the Clients DataTable
     public function listData(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $draw   = (int) $this->input('draw', 1);
         $start  = (int) $this->input('start', 0);
         $length = (int) $this->input('length', 25);
@@ -111,7 +111,7 @@ class ClientController extends Controller
     // AJAX: GET /clients/{id} - client details + loan history, for the View modal
     public function show(string $id): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $clientModel = new Client();
         $client = $clientModel->find((int) $id);
         if (!$client) {
@@ -130,7 +130,7 @@ class ClientController extends Controller
 
     public function update(string $id): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         if (!$this->verifyCsrf()) {
             $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
         }
@@ -175,7 +175,7 @@ class ClientController extends Controller
     // a loan is created between the check and the delete.
     public function delete(string $id): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         if (!$this->verifyCsrf()) {
             $this->json(['success' => false, 'message' => 'Invalid session token.'], 419);
         }

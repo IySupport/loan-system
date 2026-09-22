@@ -4,7 +4,7 @@ class ReportController extends Controller
 {
     public function index(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $this->view('reports/index', [
             'branches'          => (new Branch())->activeBranches(),
             'loanStatuses'      => (new LoanStatus())->all('id ASC'),
@@ -28,7 +28,7 @@ class ReportController extends Controller
     // AJAX: GET /reports/generate
     public function generate(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $summary = (new Loan())->reportSummary($this->filtersFromRequest());
         $this->json(['success' => true] + $summary);
     }
@@ -40,7 +40,7 @@ class ReportController extends Controller
     // always today.
     public function paymentsDueToday(): void
     {
-        Auth::requireLogin();
+        Auth::requireStaff();
         $data = (new Loan())->paymentsDueTodayByBranch();
         $this->json(['success' => true] + $data);
     }

@@ -86,9 +86,10 @@ $(function () {
             { data: 'date_loaded', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
             {
                 data: 'id', orderable: false, className: 'text-nowrap',
-                render: (id) => `
-                    <button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger delete-loan-btn" data-id="${id}"><i class="bi bi-trash"></i></button>`
+                render: (id) => window.IS_BRANCH
+                    ? `<button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>`
+                    : `<button class="btn btn-sm btn-outline-brand edit-loan-btn" data-id="${id}"><i class="bi bi-pencil"></i></button>
+                       <button class="btn btn-sm btn-outline-danger delete-loan-btn" data-id="${id}"><i class="bi bi-trash"></i></button>`
             },
         ],
         drawCallback: function () {
@@ -199,21 +200,25 @@ $('#deleteSelectedBtn').on('click', async function () {
     $('#loanTable tbody').on('click', '.edit-loan-btn', function () {
         const id = $(this).data('id');
         $.get(window.APP_URL + '/loans/' + id + '/edit', { _: Date.now() }, function (res) {
-            if (!res.success) { Toast.warning('Loan not found.'); return; }
+            if (!res.success) { Toast.warning(res.message || 'Loan not found.'); return; }
             const l = res.loan;
             $('#edit_loan_id').val(l.id);
             $('#edit_amount').val(l.amount);
-            $('#edit_branch_id').val(l.branch_id);
-
             $('#edit_action_date').val(l.action_date);
-            $('#edit_loan_status_id').val(l.loan_status_id);
             $('#edit_date_loaded').val(l.date_loaded ? String(l.date_loaded).slice(0, 10) : '');
-
-            $('#edit_repayment_status_id').val(l.repayment_status_id);
             $('#edit_workplace_name').val(l.workplace_name || '');
             $('#edit_work_contact').val(l.work_contact || '');
             $('#edit_bank_id').val(l.bank_id || '');
             $('#edit_notes').val(l.notes || '');
+
+            if (window.IS_BRANCH) {
+                $('#edit_loan_status_display').val(l.status || '');
+                $('#edit_repayment_status_display').val(l.repayment_status || '');
+            } else {
+                $('#edit_branch_id').val(l.branch_id);
+                $('#edit_loan_status_id').val(l.loan_status_id);
+                $('#edit_repayment_status_id').val(l.repayment_status_id);
+            }
             refreshEditCalculatedFigures();
             new bootstrap.Modal(document.getElementById('editLoanModal')).show();
         });

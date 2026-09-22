@@ -32,20 +32,23 @@
             <div class="user-avatar"><?= strtoupper(substr(Auth::user()['full_name'] ?? 'U', 0, 1)) ?></div>
             <div>
                 <div class="user-name"><?= htmlspecialchars(Auth::user()['full_name'] ?? '') ?></div>
-                <div class="user-role"><?= htmlspecialchars(Auth::user()['role'] ?? '') ?></div>
+                <div class="user-role"><?= htmlspecialchars(Auth::user()['role'] ?? '') ?><?= Auth::isBranch() && Auth::user()['branch_name'] ? ' - ' . htmlspecialchars(Auth::user()['branch_name']) : '' ?></div>
             </div>
         </div>
 
         <nav class="sidebar-nav">
+            <?php if (!Auth::isBranch()): ?>
             <a href="<?= APP_URL ?>/dashboard" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/dashboard')?'active':'' ?>">
                 <i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span>
             </a>
+            <?php endif; ?>
             <a href="<?= APP_URL ?>/loans/capture" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/loans/capture')?'active':'' ?>">
                 <i class="bi bi-plus-square-fill"></i><span>Capture Loan</span>
             </a>
             <a href="<?= APP_URL ?>/loans/register" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/loans/register')?'active':'' ?>">
                 <i class="bi bi-table"></i><span>Loan Register</span>
             </a>
+            <?php if (!Auth::isBranch()): ?>
             <a href="<?= APP_URL ?>/clients" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/clients')?'active':'' ?>">
                 <i class="bi bi-person-lines-fill"></i><span>Clients</span>
             </a>
@@ -55,6 +58,7 @@
             <a href="<?= APP_URL ?>/branches" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/branches')?'active':'' ?>">
                 <i class="bi bi-diagram-3-fill"></i><span>Branches</span>
             </a>
+            <?php endif; ?>
             <?php if (Auth::isAdmin()): ?>
             <a href="<?= APP_URL ?>/budgets" class="nav-link <?= str_contains($_SERVER['REQUEST_URI'],'/budgets')?'active':'' ?>">
                 <i class="bi bi-wallet2"></i><span>Branch Budgets</span>

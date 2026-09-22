@@ -1,7 +1,8 @@
-<?php $pageTitle = 'Loan Register'; ?>
+<?php $pageTitle = 'Loan Register'; $isBranch = Auth::isBranch(); ?>
 
 <div class="panel-card mb-3">
     <div class="row g-2">
+        <?php if (!$isBranch): ?>
         <div class="col-6 col-md-3 col-lg-2">
             <label class="form-label small">Branch</label>
             <select class="form-select form-select-sm" id="f_branch_id">
@@ -11,6 +12,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
+        <?php endif; ?>
         <div class="col-6 col-md-3 col-lg-2">
             <label class="form-label small">Group</label>
             <select class="form-select form-select-sm" id="f_loan_group">
@@ -29,7 +31,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-               <div class="col-6 col-md-3 col-lg-2">
+        <div class="col-6 col-md-3 col-lg-2">
             <label class="form-label small">Repayment Status</label>
             <select class="form-select form-select-sm" id="f_repayment_status_id">
                 <option value="">All Repayment Statuses</option>
@@ -111,6 +113,7 @@
 
     <div class="bulk-action-bar" id="bulkActionBar">
         <span id="selectedCount" class="me-2 fw-semibold">0 rows selected</span>
+        <?php if (!$isBranch): ?>
         <button class="btn btn-success btn-sm" id="exportSelectedBtn"><i class="bi bi-file-earmark-excel"></i> Export Selected</button>
         <button class="btn btn-outline-brand btn-sm" id="exportFilteredBtn"><i class="bi bi-file-earmark-excel"></i> Export Filtered</button>
         <div class="btn-group btn-group-sm">
@@ -128,8 +131,11 @@
             </ul>
         </div>
         <button class="btn btn-info btn-sm text-white" id="changeStatusBtn" data-bs-toggle="modal" data-bs-target="#changeStatusModal"><i class="bi bi-arrow-repeat"></i> Change Status</button>
-        <button class="btn btn-secondary btn-sm" id="changeReportStatusBtn" data-bs-toggle="modal" data-bs-target="#changeReportStatusModal"><i class="bi bi-send-check"></i> Change Report Status</button>
+        <button class="btn btn-secondary btn-sm" id="changeRepaymentStatusBtn" data-bs-toggle="modal" data-bs-target="#changeRepaymentStatusModal"><i class="bi bi-send-check"></i> Change Repayment Status</button>
         <button class="btn btn-danger btn-sm" id="deleteSelectedBtn"><i class="bi bi-trash"></i> Delete</button>
+        <?php else: ?>
+        <span class="text-muted small"><i class="bi bi-info-circle"></i> Status changes, deletes, and exports are handled by an administrator.</span>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -148,15 +154,15 @@
                     <input type="number" step="0.01" min="0" class="form-control" name="amount" id="edit_amount" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Branch *</label>
-                    <select class="form-select" name="branch_id" id="edit_branch_id" required>
-                        <?php foreach ($branches as $b): ?><option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option><?php endforeach; ?>
-                    </select>
+                    <label class="form-label">Branch <?= $isBranch ? '' : '*' ?></label>
+                    <?php if ($isBranch): ?>
+                        <input type="text" class="form-control" value="<?= htmlspecialchars(Auth::user()['branch_name'] ?? '') ?>" disabled>
+                    <?php else: ?>
+                        <select class="form-select" name="branch_id" id="edit_branch_id" required>
+                            <?php foreach ($branches as $b): ?><option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['branch_name']) ?></option><?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
                 </div>
-                <!-- <div class="col-md-6">
-                    <label class="form-label">Action Date *</label>
-                    <input type="date" class="form-control" name="action_date" id="edit_action_date" required>
-                </div> -->
                 <div class="col-md-6">
                     <label class="form-label">Action Date * <span class="text-muted fw-normal">(payment due date)</span></label>
                     <input type="date" class="form-control" name="action_date" id="edit_action_date" required>
@@ -166,16 +172,26 @@
                     <input type="date" class="form-control" name="date_loaded" id="edit_date_loaded" required>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Status *</label>
-                    <select class="form-select" name="loan_status_id" id="edit_loan_status_id" required>
-                        <?php foreach ($loanStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
-                    </select>
+                    <label class="form-label">Status <?= $isBranch ? '' : '*' ?></label>
+                    <?php if ($isBranch): ?>
+                        <input type="text" class="form-control" id="edit_loan_status_display" disabled>
+                        <div class="form-text">Set by an administrator.</div>
+                    <?php else: ?>
+                        <select class="form-select" name="loan_status_id" id="edit_loan_status_id" required>
+                            <?php foreach ($loanStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
                 </div>
-                      <div class="col-md-6">
-                    <label class="form-label">Repayment Status *</label>
-                    <select class="form-select" name="repayment_status_id" id="edit_repayment_status_id" required>
-                        <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
-                    </select>
+                <div class="col-md-6">
+                    <label class="form-label">Repayment Status <?= $isBranch ? '' : '*' ?></label>
+                    <?php if ($isBranch): ?>
+                        <input type="text" class="form-control" id="edit_repayment_status_display" disabled>
+                        <div class="form-text">Set by an administrator.</div>
+                    <?php else: ?>
+                        <select class="form-select" name="repayment_status_id" id="edit_repayment_status_id" required>
+                            <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Workplace Name</label>
@@ -216,6 +232,7 @@
   </div>
 </div>
 
+<?php if (!$isBranch): ?>
 <!-- Bulk Change Status Modal -->
 <div class="modal fade" id="changeStatusModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -235,23 +252,24 @@
   </div>
 </div>
 
-<!-- Bulk Change Report Status Modal -->
-<div class="modal fade" id="changeReportStatusModal" tabindex="-1">
+<!-- Bulk Change Repayment Status Modal -->
+<div class="modal fade" id="changeRepaymentStatusModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Change Report Status</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header"><h5 class="modal-title">Change Repayment Status</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <label class="form-label">New Report Status</label>
-        <select class="form-select" id="bulkReportStatusSelect">
-            <?php foreach ($reportStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
+        <label class="form-label">New Repayment Status</label>
+        <select class="form-select" id="bulkRepaymentStatusSelect">
+            <?php foreach ($repaymentStatuses as $s): ?><option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['status_name']) ?></option><?php endforeach; ?>
         </select>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary-brand" id="applyBulkReportStatusBtn">Apply</button>
+        <button class="btn btn-primary-brand" id="applyBulkRepaymentStatusBtn">Apply</button>
       </div>
     </div>
   </div>
 </div>
+<?php endif; ?>
 
-<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '";</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>
+<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>

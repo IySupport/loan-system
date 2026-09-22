@@ -1,4 +1,12 @@
 $(function () {
+    function toggleBranchWrap(roleSelectId, wrapId) {
+        const role = $(roleSelectId).val();
+        $(wrapId).toggleClass('d-none', role !== 'Branch');
+    }
+
+    $('#newRole').on('change', () => toggleBranchWrap('#newRole', '#newBranchWrap'));
+    $('#editRole').on('change', () => toggleBranchWrap('#editRole', '#editBranchWrap'));
+
     $('#saveUserBtn').on('click', function () {
         const payload = {
             csrf_token: window.CSRF_TOKEN,
@@ -6,6 +14,7 @@ $(function () {
             username: $('#newUsername').val().trim(),
             password: $('#newPassword').val(),
             role: $('#newRole').val(),
+            branch_id: $('#newRole').val() === 'Branch' ? $('#newBranchId').val() : '',
         };
         $.post(window.APP_URL + '/users', payload, function (res) {
             if (res.success) location.reload();
@@ -20,7 +29,9 @@ $(function () {
         $('#editFullName').val($(this).data('name'));
         $('#editUsername').val($(this).data('username'));
         $('#editRole').val($(this).data('role'));
+        $('#editBranchId').val($(this).data('branch-id') || '');
         $('#editStatus').val($(this).data('status'));
+        toggleBranchWrap('#editRole', '#editBranchWrap');
         new bootstrap.Modal(document.getElementById('editUserModal')).show();
     });
 
@@ -31,6 +42,7 @@ $(function () {
             full_name: $('#editFullName').val().trim(),
             username: $('#editUsername').val().trim(),
             role: $('#editRole').val(),
+            branch_id: $('#editRole').val() === 'Branch' ? $('#editBranchId').val() : '',
             status: $('#editStatus').val(),
         };
         $.post(window.APP_URL + '/users/' + id + '/update', payload, function (res) {
@@ -59,9 +71,8 @@ $(function () {
 
     $('.toggle-user-btn').on('click', async function () {
         const id = $(this).data('id');
-        const ok = await Toast.confirm('Change status of this user?', { type: 'warning', confirmLabel: 'Confirmtion' });
+        const ok = await Toast.confirm('Change status of this user?', { type: 'warning', confirmLabel: 'Confirm' });
         if (!ok) return;
-        // if (!confirm('Change status of this user?')) return;
         $.post(window.APP_URL + '/users/' + id + '/toggle', { csrf_token: window.CSRF_TOKEN }, function (res) {
             if (res.success) location.reload(); else Toast.error('Action failed.');
         });
