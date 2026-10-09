@@ -1,0 +1,929 @@
+diff --git a/controllers/ExportController.php b/controllers/ExportController.php
+index c41b11f..3fffa39 100644
+--- a/controllers/ExportController.php
++++ b/controllers/ExportController.php
+@@ -4,13 +4,49 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
+ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+ use PhpOffice\PhpSpreadsheet\Style\Fill;
+ use PhpOffice\PhpSpreadsheet\Style\Alignment;
++use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
++use PhpOffice\PhpSpreadsheet\Cell\DataType;
++use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
++use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+ 
+ class ExportController extends Controller
+ {
+-    private const HEADERS = [
+-        'Reference Number', 'Name', 'Surname', 'ID Number', 'Account Number',
+-        'Amount', 'Branch', 'Loan Count', 'Group', 'Status', 'Repayment Status',
+-        'Action Date', 'Date Loaded',
++    private const MONEY_FORMAT = '"R" #,##0.00';
++    private const DATE_FORMAT  = 'yyyy-mm-dd';
++
++    /**
++     * Column layout shared by every Excel export (selected / filtered / all /
++     * by group / by branch / Reports page). Same order as the Loan Register
++     * screen, plus Interest Amount, Amount Due and Work Contact.
++     *
++     * [header, key in loan_register_view, type]
++     *   text  - written as an explicit string. Without this Excel shows a
++     *           13-digit ID number as 9.00101E+12, drops leading zeros from
++     *           account/phone numbers, and evaluates anything starting with
++     *           "=" as a formula.
++     *   money - number, formatted as R #,##0.00
++     *   int   - whole number
++     *   date  - real Excel date (sortable / filterable), shown as yyyy-mm-dd
++     */
++    private const COLUMNS = [
++        ['Reference Number', 'reference_number', 'text'],
++        ['Name',             'name',             'text'],
++        ['Surname',          'surname',          'text'],
++        ['ID Number',        'id_number',        'text'],
++        ['Account Number',   'account_number',   'text'],
++        ['Bank Name',        'bank_name',        'text'],
++        ['Amount',           'amount',           'money'],
++        ['Interest Amount',  'interest_amount',  'money'],
++        ['Amount Due',       'amount_due',       'money'],
++        ['Branch',           'branch_name',      'text'],
++        ['Workplace',        'workplace_name',   'text'],
++        ['Work Contact',     'work_contact',     'text'],
++        ['Loan Count',       'loan_count',       'int'],
++        ['Group',            'loan_group',       'text'],
++        ['Loan Status',      'status',           'text'],
++        ['Repayment Status', 'repayment_status', 'text'],
++        ['Action Date',      'action_date',      'date'],
++        ['Date Loaded',      'date_loaded',      'date'],
+     ];
+ 
+     private function rows(array $filters): array
+@@ -29,8 +65,16 @@ class ExportController extends Controller
+         $sheet = $spreadsheet->getActiveSheet();
+         $sheet->setTitle('Loan Register');
+ 
+-        $sheet->fromArray(self::HEADERS, null, 'A1');
+-        $headerRange = 'A1:' . chr(64 + count(self::HEADERS)) . '1';
++        $lastCol = Coordinate::stringFromColumnIndex(count(self::COLUMNS));
++
++        foreach (self::COLUMNS as $i => [$header]) {
++            $sheet->setCellValueExplicit(
++                Coordinate::stringFromColumnIndex($i + 1) . '1',
++                $header,
++                DataType::TYPE_STRING
++            );
++        }
++        $headerRange = "A1:{$lastCol}1";
+         $sheet->getStyle($headerRange)->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+         $sheet->getStyle($headerRange)->getFill()
+             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0F5C4C');
+@@ -38,27 +82,35 @@ class ExportController extends Controller
+ 
+         $r = 2;
+         foreach ($rows as $row) {
+-            $sheet->fromArray([
+-                $row['reference_number'],
+-                $row['name'],
+-                $row['surname'],
+-                $row['id_number'],
+-                $row['account_number'],
+-                (float) $row['amount'],
+-                $row['branch_name'],
+-                (int) $row['loan_count'],
+-                $row['loan_group'],
+-                $row['status'],
+-                $row['repayment_status'],
+-                $row['action_date'],
+-                date('Y-m-d', strtotime($row['date_loaded'])),
+-            ], null, "A{$r}");
++            foreach (self::COLUMNS as $i => [, $key, $type]) {
++                $this->writeCell(
++                    $sheet,
++                    Coordinate::stringFromColumnIndex($i + 1) . $r,
++                    $row[$key] ?? null,
++                    $type
++                );
++            }
+             $r++;
+         }
++        $lastRow = $r - 1;
+ 
+-        foreach (range('A', chr(64 + count(self::HEADERS))) as $col) {
+-            $sheet->getColumnDimension($col)->setAutoSize(true);
++        // Number formats are applied once per column range (not once per
++        // cell) so large exports stay fast.
++        if ($lastRow >= 2) {
++            foreach (self::COLUMNS as $i => [, , $type]) {
++                $col = Coordinate::stringFromColumnIndex($i + 1);
++                if ($type === 'money') {
++                    $sheet->getStyle("{$col}2:{$col}{$lastRow}")->getNumberFormat()->setFormatCode(self::MONEY_FORMAT);
++                } elseif ($type === 'date') {
++                    $sheet->getStyle("{$col}2:{$col}{$lastRow}")->getNumberFormat()->setFormatCode(self::DATE_FORMAT);
++                }
++            }
+         }
++
++        foreach (range(1, count(self::COLUMNS)) as $colIndex) {
++            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($colIndex))->setAutoSize(true);
++        }
++        $sheet->setAutoFilter("A1:{$lastCol}{$lastRow}");
+         $sheet->freezePane('A2');
+ 
+         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+@@ -70,11 +122,45 @@ class ExportController extends Controller
+         exit;
+     }
+ 
++    private function writeCell(Worksheet $sheet, string $coord, $value, string $type): void
++    {
++        if ($value === null || $value === '') {
++            return; // leave the cell empty
++        }
++
++        switch ($type) {
++            case 'money':
++                $sheet->setCellValueExplicit($coord, (float) $value, DataType::TYPE_NUMERIC);
++                return;
++            case 'int':
++                $sheet->setCellValueExplicit($coord, (int) $value, DataType::TYPE_NUMERIC);
++                return;
++            case 'date':
++                try {
++                    $serial = ExcelDate::PHPToExcel(new DateTime((string) $value));
++                    $sheet->setCellValueExplicit($coord, $serial, DataType::TYPE_NUMERIC);
++                } catch (Exception $e) {
++                    $sheet->setCellValueExplicit($coord, (string) $value, DataType::TYPE_STRING);
++                }
++                return;
++            default:
++                $sheet->setCellValueExplicit($coord, (string) $value, DataType::TYPE_STRING);
++        }
++    }
++
+     public function exportSelected(): void
+     {
+         Auth::requireStaff();
+         $ids = $_GET['ids'] ?? '';
+-        $ids = $ids !== '' ? array_map('intval', explode(',', $ids)) : [];
++        $ids = $ids !== '' ? array_values(array_filter(array_map('intval', explode(',', $ids)))) : [];
++
++        // An empty list must NOT fall through to the filter builder - with no
++        // ids it adds no WHERE clause and would export the entire register.
++        if (empty($ids)) {
++            http_response_code(400);
++            die('No rows selected for export.');
++        }
++
+         $rows = $this->rows(['ids' => $ids]);
+         $this->stream($rows, 'loans_selected_' . date('Ymd_His') . '.xlsx');
+     }
+diff --git a/models/Loan.php b/models/Loan.php
+index a4bd8d8..ec47128 100644
+--- a/models/Loan.php
++++ b/models/Loan.php
+@@ -227,7 +227,7 @@ public function update(int $id, array $d): bool
+     }
+ 
+     private const SORTABLE = [
+-        'reference_number', 'name', 'surname', 'id_number', 'account_number',  'bank','amount',
++        'reference_number', 'name', 'surname', 'id_number', 'account_number',  'bank', 'bank_name', 'amount',
+         'branch_name', 'loan_count', 'loan_group', 'status', 'repayment_status', 'action_date', 'date_loaded',
+         'workplace_name',
+     ];
+diff --git a/public/assets/css/loan-register.css b/public/assets/css/loan-register.css
+new file mode 100644
+index 0000000..1b6951e
+--- /dev/null
++++ b/public/assets/css/loan-register.css
+@@ -0,0 +1,267 @@
++/* =====================================================================
++   Loan Register - Table view + Card view
++   Loaded only by views/loans/register.php. Uses the colour tokens from
++   style.css (--brand-primary, --border-color, --text-dark, ...).
++   ===================================================================== */
++
++:root {
++    /* Alternating colour loop - shared by table rows AND cards.
++       1st = smoke white, 2nd = greenish white, then repeat. */
++    --lr-row-a:        #f5f5f3;
++    --lr-row-b:        #e8f5ee;
++    --lr-row-hover:    #d8eee3;
++    --lr-row-selected: #c6e7d6;
++    --lr-edge:         rgba(14, 47, 54, .24);
++}
++
++/* ---------- Toolbar + Table/Cards toggle ---------- */
++.lr-toolbar {
++    display: flex; flex-wrap: wrap; align-items: center;
++    justify-content: space-between; gap: 12px 20px;
++    margin-bottom: 14px;
++}
++
++.lr-toggle {
++    display: inline-flex; padding: 3px; gap: 2px;
++    background: #eaf0ef; border: 1px solid var(--border-color); border-radius: 12px;
++}
++.lr-toggle__btn {
++    display: inline-flex; align-items: center; gap: 8px;
++    border: 0; background: transparent; cursor: pointer;
++    padding: 7px 16px; border-radius: 9px;
++    font: 600 13px/1 'Inter', sans-serif; color: var(--text-muted);
++    transition: background .15s, color .15s, box-shadow .15s;
++}
++.lr-toggle__btn:hover { color: var(--brand-primary-dark); }
++.lr-toggle__btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
++.lr-toggle__btn i { font-size: 15px; }
++/* active state is driven by the panel's data-view so there is no flash on load */
++.lr-panel[data-view="table"] .lr-toggle__btn[data-view="table"],
++.lr-panel[data-view="cards"] .lr-toggle__btn[data-view="cards"] {
++    background: #fff; color: var(--brand-primary-dark);
++    box-shadow: 0 1px 3px rgba(16, 42, 49, .16);
++}
++
++.lr-card-tools { display: none; align-items: center; flex-wrap: wrap; gap: 10px 20px; }
++.lr-selectall, .lr-sort { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-dark); cursor: pointer; }
++.lr-sort { cursor: default; }
++.lr-sort span { color: var(--text-muted); font-weight: 600; }
++.lr-sort select { width: auto; min-width: 190px; }
++.lr-selectall input { width: 17px; height: 17px; accent-color: var(--brand-primary); cursor: pointer; }
++.lr-count { font-size: 12.5px; color: var(--text-muted); }
++
++.lr-panel .dataTables_length { margin-bottom: 12px; }
++.lr-panel .dataTables_info { padding-top: 16px; }
++
++/* ---------- View switching (driven by #lrPanel[data-view]) ---------- */
++.lr-cards-view { display: none; }
++.lr-panel[data-view="cards"] .lr-cards-view { display: block; }
++.lr-panel[data-view="cards"] .lr-card-tools { display: flex; }
++.lr-panel[data-view="cards"] .lr-scroll,
++.lr-panel[data-view="cards"] #loanTable { display: none; }
++
++/* ---------- TABLE VIEW ---------- */
++/* The horizontal scroller. The table never wraps text, so every column stays
++   readable and the user scrolls sideways instead of squinting at squashed cells. */
++.lr-scroll {
++    position: relative;
++    overflow-x: auto; overflow-y: hidden;
++    border: 1px solid var(--border-color); border-radius: 12px; background: #fff;
++    -webkit-overflow-scrolling: touch;
++    scrollbar-color: var(--brand-primary) #e3ecea;
++}
++.lr-scroll::-webkit-scrollbar,
++.lr-hbar::-webkit-scrollbar { height: 14px; }
++.lr-scroll::-webkit-scrollbar-track,
++.lr-hbar::-webkit-scrollbar-track { background: #e3ecea; }
++.lr-scroll::-webkit-scrollbar-thumb,
++.lr-hbar::-webkit-scrollbar-thumb { background: var(--brand-primary); border-radius: 8px; border: 3px solid #e3ecea; }
++.lr-scroll::-webkit-scrollbar-thumb:hover,
++.lr-hbar::-webkit-scrollbar-thumb:hover { background: var(--brand-primary-dark); }
++
++#loanTable.lr-table {
++    width: max-content !important;     /* DataTables writes width:100% inline */
++    min-width: 100%;
++    margin: 0;
++    border-collapse: separate;         /* required for sticky cells to keep their borders */
++    border-spacing: 0;
++}
++#loanTable.lr-table > thead > tr > th {
++    background-color: #eaf1ef;
++    color: #52656d;
++    border-bottom: 2px solid #d6e3df;
++    padding: 12px 14px;
++    white-space: nowrap;
++}
++#loanTable.lr-table > tbody > tr > td {
++    padding: 11px 14px;
++    white-space: nowrap;
++    border-bottom: 1px solid rgba(14, 47, 54, .07);
++    background-color: var(--lr-cell-bg);
++}
++#loanTable.lr-table > tbody > tr:last-child > td { border-bottom: 0; }
++#loanTable.lr-table td.dataTables_empty { white-space: normal; text-align: center; padding: 36px 14px; color: var(--text-muted); }
++
++/* colour loop for rows: colour 1, colour 2, colour 1, colour 2 ... */
++#loanTable.lr-table > tbody > tr                  { --lr-cell-bg: var(--lr-row-a); }
++#loanTable.lr-table > tbody > tr:nth-child(even)  { --lr-cell-bg: var(--lr-row-b); }
++#loanTable.lr-table > tbody > tr:hover            { --lr-cell-bg: var(--lr-row-hover); }
++#loanTable.lr-table > tbody > tr.is-selected      { --lr-cell-bg: var(--lr-row-selected); }
++
++/* Pinned columns: Name (3), Surname (4), ID Number (5). Their `left` offsets are
++   measured and set by register-views.js (--lr-left-4 / --lr-left-5) so they
++   stay exact whatever the content width. #loanTable is in every selector so
++   these beat DataTables' own `position: relative` on sortable headers. */
++#loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3),
++#loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4),
++#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { position: sticky; }
++#loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3) { left: 0; }
++#loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4) { left: var(--lr-left-4, 0px); }
++#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { left: var(--lr-left-5, 0px); }
++#loanTable.lr-table td:nth-child(3), #loanTable.lr-table td:nth-child(4), #loanTable.lr-table td:nth-child(5) { z-index: 2; }
++#loanTable.lr-table th:nth-child(3), #loanTable.lr-table th:nth-child(4), #loanTable.lr-table th:nth-child(5) { z-index: 4; }
++#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { border-right: 1px solid #cfe0da; }
++/* soft edge shadow once content is sliding underneath the pinned columns */
++.lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(5),
++.lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(5) { box-shadow: 9px 0 12px -8px var(--lr-edge); }
++
++/* Phones: three pinned columns would fill the whole screen, so pin only Name. */
++@media (max-width: 575.98px) {
++    #loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4),
++    #loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { position: static; box-shadow: none; }
++    #loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { border-right: 0; }
++    #loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3) { border-right: 1px solid #cfe0da; }
++    .lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(5),
++    .lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(5) { box-shadow: none; }
++    .lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(3),
++    .lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(3) { box-shadow: 9px 0 12px -8px var(--lr-edge); }
++}
++
++/* ---------- Fixed horizontal scrollbar (bottom of the screen) ---------- */
++.lr-hbar {
++    position: fixed; bottom: 0; left: 0; width: 100%; height: 18px;
++    overflow-x: scroll; overflow-y: hidden;
++    display: none; z-index: 1015;
++    background: #e3ecea; border-top: 1px solid #cfe0da;
++    box-shadow: 0 -6px 16px rgba(14, 47, 54, .14);
++    scrollbar-color: var(--brand-primary) #e3ecea;
++}
++.lr-hbar.is-visible { display: block; }
++.lr-hbar__track { height: 1px; }
++
++/* ---------- CARD VIEW ---------- */
++.lr-cards {
++    display: grid;
++    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
++    gap: 16px;
++    padding: 2px 0 6px;
++    transition: opacity .15s;
++}
++.lr-cards-view.is-loading .lr-cards { opacity: .45; pointer-events: none; }
++
++.lr-card {
++    --lr-accent: #9aa8ae;
++    position: relative;
++    display: flex; flex-direction: column; gap: 14px;
++    min-width: 0;
++    padding: 16px 16px 14px 18px;
++    border: 1px solid rgba(14, 47, 54, .09);
++    border-left: 5px solid var(--lr-accent);
++    border-radius: 16px;
++    background: var(--lr-card-bg);
++    box-shadow: 0 1px 2px rgba(16, 42, 49, .05);
++    transition: box-shadow .18s, transform .18s, border-color .18s;
++}
++/* colour loop for cards: smoke white, greenish white, smoke white, ... */
++.lr-card:nth-child(odd)  { --lr-card-bg: var(--lr-row-a); }
++.lr-card:nth-child(even) { --lr-card-bg: var(--lr-row-b); }
++.lr-card:hover { box-shadow: 0 10px 24px rgba(16, 42, 49, .12); transform: translateY(-2px); }
++.lr-card.is-selected { border-color: var(--brand-primary); border-left-color: var(--lr-accent); box-shadow: 0 0 0 2px rgba(20, 160, 133, .38), 0 8px 20px rgba(16, 42, 49, .10); }
++
++.lr-card[data-status="pending-review"] { --lr-accent: #8b9aa3; }
++.lr-card[data-status="approved"]       { --lr-accent: #14a085; }
++.lr-card[data-status="disbursed"]      { --lr-accent: #3b6fd4; }
++.lr-card[data-status="rejected"]       { --lr-accent: #d64545; }
++.lr-card[data-status="closed"]         { --lr-accent: #7a56d6; }
++
++/* header: checkbox, avatar, name + ID, group */
++.lr-card__head { display: flex; align-items: center; gap: 12px; }
++.lr-check { display: inline-flex; margin: 0; cursor: pointer; }
++.lr-check input { width: 18px; height: 18px; accent-color: var(--brand-primary); cursor: pointer; }
++
++.lr-avatar {
++    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
++    display: inline-flex; align-items: center; justify-content: center;
++    font: 700 15px/1 'Inter', sans-serif; letter-spacing: .5px; color: #fff;
++    background: linear-gradient(135deg, #14a085, #0b7a65);
++    box-shadow: 0 2px 6px rgba(14, 47, 54, .22);
++}
++.lr-av-1 { background: linear-gradient(135deg, #3b6fd4, #274fa6); }
++.lr-av-2 { background: linear-gradient(135deg, #7a56d6, #5638a8); }
++.lr-av-3 { background: linear-gradient(135deg, #e09a2d, #b9791b); }
++.lr-av-4 { background: linear-gradient(135deg, #d9576b, #b13a4d); }
++.lr-av-5 { background: linear-gradient(135deg, #5b7a86, #3f5964); }
++
++.lr-card__title { flex: 1 1 auto; min-width: 0; }
++.lr-card__name {
++    margin: 0; font-size: 16px; font-weight: 700; line-height: 1.25; color: var(--brand-dark);
++    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
++    overflow: hidden; overflow-wrap: anywhere;
++}
++.lr-card__sub { margin-top: 3px; font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
++.lr-card__sub i { margin-right: 4px; opacity: .8; }
++.lr-card__head .group-pill { flex: 0 0 auto; align-self: flex-start; }
++
++/* reference + loan count */
++.lr-card__ref { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -4px; }
++.lr-ref { font-size: 12px; font-weight: 700; letter-spacing: .3px; color: #3d545c; font-variant-numeric: tabular-nums; }
++.lr-chip {
++    display: inline-flex; align-items: center; gap: 5px;
++    padding: 2px 9px; border-radius: 20px;
++    font-size: 11.5px; font-weight: 700;
++    background: rgba(14, 47, 54, .07); color: #3d545c;
++}
++
++/* money strip: Amount | Interest | Amount due */
++.lr-money {
++    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
++    background: #fff; border: 1px solid rgba(14, 47, 54, .10); border-radius: 12px; overflow: hidden;
++}
++.lr-money > div { padding: 9px 10px; min-width: 0; }
++.lr-money > div + div { border-left: 1px solid rgba(14, 47, 54, .08); }
++.lr-money span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
++.lr-money strong { display: block; margin-top: 3px; font-size: 14px; font-weight: 800; color: var(--text-dark); white-space: nowrap; font-variant-numeric: tabular-nums; }
++.lr-money .lr-money__due { background: var(--brand-soft); }
++.lr-money .lr-money__due strong { color: var(--brand-primary-dark); }
++
++.lr-card__badges { display: flex; flex-wrap: wrap; gap: 8px; }
++.lr-card .badge-status, .lr-card .group-pill { box-shadow: inset 0 0 0 1px rgba(14, 47, 54, .10); }
++
++/* details grid */
++.lr-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 16px; margin: 0; }
++.lr-details > div { min-width: 0; }
++.lr-details dt { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
++.lr-details dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: var(--text-dark); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
++.lr-details dd a { color: inherit; text-decoration: none; border-bottom: 1px dotted rgba(14, 47, 54, .4); }
++.lr-details dd a:hover { color: var(--brand-primary-dark); }
++.lr-details .is-empty { color: #9aa8ae; font-weight: 500; }
++
++.lr-card__notes {
++    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
++    margin: 0; padding: 8px 11px; border-radius: 10px;
++    font-size: 12.5px; font-style: italic; color: #4d636b; background: rgba(255, 255, 255, .7);
++}
++
++.lr-card__actions {
++    display: flex; justify-content: flex-end; gap: 8px;
++    margin-top: auto; padding-top: 12px; border-top: 1px dashed rgba(14, 47, 54, .18);
++}
++
++.lr-empty { grid-column: 1 / -1; padding: 48px 16px; text-align: center; color: var(--text-muted); }
++.lr-empty i { display: block; margin-bottom: 10px; font-size: 38px; color: #b7c7c2; }
++
++@media (prefers-reduced-motion: reduce) {
++    .lr-card, .lr-cards, .lr-toggle__btn { transition: none; }
++    .lr-card:hover { transform: none; }
++}
++@media print { .lr-hbar { display: none !important; } }
+diff --git a/public/assets/js/register-views.js b/public/assets/js/register-views.js
+new file mode 100644
+index 0000000..9ac0a51
+--- /dev/null
++++ b/public/assets/js/register-views.js
+@@ -0,0 +1,309 @@
++/* =====================================================================
++   Loan Register - Table / Cards views, pinned columns and an
++   always-visible horizontal scrollbar.
++
++   Loaded AFTER register.js, which keeps owning the DataTable, filters,
++   selection, bulk actions, edit and delete. This file only layers views
++   on top of it:
++     - cards are rendered from the very same DataTables page, so filters,
++       sorting, paging and the selection set are shared by both views
++     - card checkboxes / Edit / Delete are proxied to the table's own
++       controls, so every existing handler keeps working untouched
++   ===================================================================== */
++(function () {
++    'use strict';
++
++    var VIEW_KEY = 'loanRegisterView';
++
++    // value = "<DataTables column index>:<direction>" (indexes follow the
++    // columns[] order in register.js: 2 name, 3 surname, 7 amount,
++    // 14 action date, 15 date loaded)
++    var SORT_OPTIONS = [
++        ['15:desc', 'Newest loaded'],
++        ['15:asc',  'Oldest loaded'],
++        ['14:asc',  'Action date: soonest'],
++        ['14:desc', 'Action date: latest'],
++        ['2:asc',   'Name A\u2013Z'],
++        ['3:asc',   'Surname A\u2013Z'],
++        ['7:desc',  'Amount: high to low'],
++        ['7:asc',   'Amount: low to high']
++    ];
++
++    /* ---------------------------------------------------------------
++       Pure helpers (also exposed on window.__lrViews for debugging)
++       --------------------------------------------------------------- */
++    function slug(s) {
++        return String(s == null ? '' : s).toLowerCase().trim()
++            .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
++    }
++
++    function initials(r) {
++        var a = Array.from(String(r.name || '').trim())[0] || '';
++        var b = Array.from(String(r.surname || '').trim())[0] || '';
++        return (a + b).toUpperCase() || '?';
++    }
++
++    // stable avatar colour per client (same ID number => same colour)
++    function avatarTone(r) {
++        var key = String(r.id_number || r.id || ''), h = 0;
++        for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
++        return h % 6;
++    }
++
++    function detail(label, valueHtml, empty) {
++        return '<div><dt>' + label + '</dt><dd' + (empty ? ' class="is-empty"' : '') + '>' + valueHtml + '</dd></div>';
++    }
++    function textDetail(label, v) {
++        return v ? detail(label, escapeHtml(v), false) : detail(label, '&mdash;', true);
++    }
++
++    function cardHtml(r) {
++        var full   = ((r.name || '') + ' ' + (r.surname || '')).trim();
++        var tel    = String(r.work_contact || '').replace(/[^\d+]/g, '');
++        var contact = r.work_contact
++            ? (tel ? '<a href="tel:' + escapeHtml(tel) + '">' + escapeHtml(r.work_contact) + '</a>' : escapeHtml(r.work_contact))
++            : '';
++        var clientTel = String(r.phone || '').replace(/[^\d+]/g, '');
++        var phone  = r.phone
++            ? (clientTel ? '<a href="tel:' + escapeHtml(clientTel) + '">' + escapeHtml(r.phone) + '</a>' : escapeHtml(r.phone))
++            : '';
++        var tone   = avatarTone(r);
++        var loanNo = parseInt(r.loan_count, 10);
++
++        var h = '';
++        h += '<article class="lr-card" data-id="' + escapeHtml(r.id) + '" data-status="' + escapeHtml(slug(r.status)) + '">';
++
++        // header
++        h +=   '<header class="lr-card__head">';
++        h +=     '<label class="lr-check"><input type="checkbox" class="card-check" aria-label="Select ' + escapeHtml(full || 'loan') + '"></label>';
++        h +=     '<span class="lr-avatar' + (tone ? ' lr-av-' + tone : '') + '" aria-hidden="true">' + escapeHtml(initials(r)) + '</span>';
++        h +=     '<div class="lr-card__title">';
++        h +=       '<h3 class="lr-card__name" title="' + escapeHtml(full) + '">' + escapeHtml(full || '\u2014') + '</h3>';
++        h +=       '<div class="lr-card__sub"><i class="bi bi-person-vcard"></i>' + escapeHtml(r.id_number || '\u2014') + '</div>';
++        h +=     '</div>';
++        h +=     '<span class="group-pill ' + groupBadgeClass(r.loan_group) + '">' + escapeHtml(r.loan_group) + '</span>';
++        h +=   '</header>';
++
++        // reference + loan count
++        h +=   '<div class="lr-card__ref">';
++        h +=     '<span class="lr-ref">' + escapeHtml(r.reference_number) + '</span>';
++        if (loanNo > 0) h += '<span class="lr-chip"><i class="bi bi-arrow-repeat"></i>Loan ' + loanNo + '</span>';
++        h +=   '</div>';
++
++        // money
++        h +=   '<div class="lr-money">';
++        h +=     '<div><span>Amount</span><strong>' + fmtMoney(r.amount) + '</strong></div>';
++        h +=     '<div><span>Interest</span><strong>' + fmtMoney(r.interest_amount) + '</strong></div>';
++        h +=     '<div class="lr-money__due"><span>Amount due</span><strong>' + fmtMoney(r.amount_due) + '</strong></div>';
++        h +=   '</div>';
++
++        // statuses
++        h +=   '<div class="lr-card__badges">';
++        h +=     '<span class="badge-status ' + statusBadgeClass(r.status) + '">' + escapeHtml(r.status) + '</span>';
++        h +=     '<span class="badge-status ' + statusBadgeClass(r.repayment_status) + '">' + escapeHtml(r.repayment_status) + '</span>';
++        h +=   '</div>';
++
++        // details
++        h +=   '<dl class="lr-details">';
++        h +=     textDetail('Branch', r.branch_name);
++        h +=     textDetail('Workplace', r.workplace_name);
++        h +=     contact ? detail('Work contact', contact, false) : detail('Work contact', '&mdash;', true);
++        h +=     phone   ? detail('Client phone', phone, false)   : detail('Client phone', '&mdash;', true);
++        h +=     textDetail('Bank', r.bank_name);
++        h +=     textDetail('Account no.', r.account_number);
++        h +=     detail('Action date', escapeHtml(fmtDate(r.action_date)) || '&mdash;', !r.action_date);
++        h +=     detail('Date loaded', escapeHtml(fmtDate(r.date_loaded)) || '&mdash;', !r.date_loaded);
++        h +=   '</dl>';
++
++        if (r.notes) h += '<p class="lr-card__notes"><i class="bi bi-chat-left-text"></i> ' + escapeHtml(r.notes) + '</p>';
++
++        // actions (proxied to the table's own buttons)
++        h +=   '<footer class="lr-card__actions">';
++        h +=     '<button type="button" class="btn btn-sm btn-outline-brand lr-edit" data-id="' + escapeHtml(r.id) + '"><i class="bi bi-pencil"></i> Edit</button>';
++        if (!window.IS_BRANCH) {
++            h += '<button type="button" class="btn btn-sm btn-outline-danger lr-delete" data-id="' + escapeHtml(r.id) + '"><i class="bi bi-trash"></i> Delete</button>';
++        }
++        h +=   '</footer>';
++
++        h += '</article>';
++        return h;
++    }
++
++    function emptyHtml() {
++        return '<div class="lr-empty"><i class="bi bi-inbox"></i>No loans found for the selected filters.</div>';
++    }
++
++    window.__lrViews = { cardHtml: cardHtml, emptyHtml: emptyHtml, slug: slug, initials: initials };
++
++    /* ---------------------------------------------------------------
++       Wiring
++       --------------------------------------------------------------- */
++    $(function () {
++        var $table = $('#loanTable');
++        var $panel = $('#lrPanel');
++        if (!$table.length || !$panel.length || !$.fn.DataTable.isDataTable('#loanTable')) return;
++
++        var api = $table.DataTable();
++
++        // ---- layout: horizontal scroller around the table; cards sit inside
++        //      the DataTables wrapper so its page-length / info / pager serve both views
++        $table.wrap('<div class="lr-scroll" id="lrScroll"></div>');
++        var scroller = document.getElementById('lrScroll');
++        $('#lrCardsView').insertAfter('#lrScroll');
++
++        var hbar  = document.getElementById('lrHbar');
++        var track = document.getElementById('lrHbarTrack');
++
++        // ---- sort control for cards (cards have no sortable headers)
++        var $sort = $('#cardsSort');
++        $sort.append('<option value="" hidden>Custom (table column)</option>');
++        SORT_OPTIONS.forEach(function (o) { $sort.append($('<option>').val(o[0]).text(o[1])); });
++        $sort.on('change', function () {
++            var p = this.value.split(':');
++            if (p.length === 2) api.order([parseInt(p[0], 10), p[1]]).draw();
++        });
++        function syncSortSelect() {
++            var ord = api.order();
++            var v = ord.length ? ord[0][0] + ':' + ord[0][1] : '';
++            $sort.val($sort.find('option[value="' + v + '"]').length ? v : '');
++        }
++
++        // ---- view toggle (user choice, remembered; never decided by screen size)
++        function setView(view, persist) {
++            view = view === 'cards' ? 'cards' : 'table';
++            $panel.attr('data-view', view);
++            $('#lrViewToggle .lr-toggle__btn').each(function () {
++                this.setAttribute('aria-pressed', this.getAttribute('data-view') === view ? 'true' : 'false');
++            });
++            if (persist) { try { localStorage.setItem(VIEW_KEY, view); } catch (e) { /* private mode */ } }
++            updateStickyOffsets();
++            scheduleBarUpdate();
++        }
++        $('#lrViewToggle').on('click', '.lr-toggle__btn', function () {
++            setView(this.getAttribute('data-view'), true);
++        });
++
++        // ---- cards
++        function renderCards() {
++            var rows = api.rows({ page: 'current' }).data().toArray();
++            $('#loanCards').html(rows.length ? rows.map(cardHtml).join('') : emptyHtml());
++            $('#lrCount').text(rows.length + (rows.length === 1 ? ' loan' : ' loans') + ' on this page');
++            syncSelection();
++        }
++
++        // ---- selection: one source of truth (register.js's selectedIds Set)
++        function syncSelection() {
++            var sel = (typeof selectedIds !== 'undefined') ? selectedIds : new Set();
++            var total = 0, on = 0;
++            $('#loanCards .lr-card').each(function () {
++                var isOn = sel.has(String(this.getAttribute('data-id')));
++                this.classList.toggle('is-selected', isOn);
++                $(this).find('.card-check').prop('checked', isOn);
++                total++; if (isOn) on++;
++            });
++            $('#loanTable tbody tr').each(function () {
++                $(this).toggleClass('is-selected', $(this).find('.row-check').is(':checked'));
++            });
++            $('#cardsSelectAll').prop('checked', total > 0 && on === total).prop('indeterminate', on > 0 && on < total);
++        }
++
++        // card checkbox -> the matching table checkbox (existing handler updates the Set + bulk bar)
++        $('#loanCards').on('change', '.card-check', function () {
++            var id = String($(this).closest('.lr-card').attr('data-id'));
++            $('#loanTable tbody .row-check').filter(function () { return this.value === id; })
++                .prop('checked', this.checked).trigger('change');
++        });
++        $('#cardsSelectAll').on('change', function () {
++            $('#selectAll').prop('checked', this.checked).trigger('change');
++        });
++        // keep cards/rows highlighted whichever view the change came from
++        $('#loanTable tbody').on('change', '.row-check', syncSelection);
++        $('#selectAll').on('change', syncSelection);
++
++        // card Edit / Delete -> the table's own buttons (existing handlers do the work)
++        function proxyClick(btnClass, id) {
++            $('#loanTable tbody ' + btnClass).filter(function () { return this.getAttribute('data-id') === id; })
++                .first().trigger('click');
++        }
++        $('#loanCards').on('click', '.lr-edit',   function () { proxyClick('.edit-loan-btn',   this.getAttribute('data-id')); });
++        $('#loanCards').on('click', '.lr-delete', function () { proxyClick('.delete-loan-btn', this.getAttribute('data-id')); });
++
++        // ---- pinned columns: measure the first two pinned widths so the
++        //      next pinned column can sit exactly beside them
++        function updateStickyOffsets() {
++            var ths = $table.find('thead th');
++            if (ths.length < 5) return;
++            var w3 = ths[2].getBoundingClientRect().width;
++            var w4 = ths[3].getBoundingClientRect().width;
++            if (!w3) return; // table hidden (cards view) - re-measured when it is shown again
++            $table[0].style.setProperty('--lr-left-4', w3 + 'px');
++            $table[0].style.setProperty('--lr-left-5', (w3 + w4) + 'px');
++        }
++
++        // ---- fixed bottom scrollbar, mirrored with the table's own scroll position
++        var barQueued = false;
++        function scheduleBarUpdate() {
++            if (barQueued) return;
++            barQueued = true;
++            requestAnimationFrame(function () { barQueued = false; updateBar(); });
++        }
++        function updateBar() {
++            var cards    = $panel.attr('data-view') === 'cards';
++            var overflow = scroller.scrollWidth > scroller.clientWidth + 1;
++            var r        = scroller.getBoundingClientRect();
++            var vh       = window.innerHeight || document.documentElement.clientHeight;
++            var nativeBarOnScreen = r.bottom <= vh + 1;      // the table's own scrollbar is already visible
++            var tableOnScreen     = r.top < vh - 24 && r.bottom > 0;
++            var show = !cards && overflow && !nativeBarOnScreen && tableOnScreen;
++
++            hbar.classList.toggle('is-visible', show);
++            if (!show) return;
++
++            hbar.style.left  = (r.left + scroller.clientLeft) + 'px';
++            hbar.style.width = scroller.clientWidth + 'px';
++            track.style.width = scroller.scrollWidth + 'px';
++            if (Math.abs(hbar.scrollLeft - scroller.scrollLeft) > 1) hbar.scrollLeft = scroller.scrollLeft;
++        }
++
++        var lock = null;
++        scroller.addEventListener('scroll', function () {
++            $(scroller).toggleClass('is-scrolled', scroller.scrollLeft > 0);
++            if (lock === 'bar') return;
++            lock = 'scroller';
++            hbar.scrollLeft = scroller.scrollLeft;
++            requestAnimationFrame(function () { lock = null; });
++        }, { passive: true });
++        hbar.addEventListener('scroll', function () {
++            if (lock === 'scroller') return;
++            lock = 'bar';
++            scroller.scrollLeft = hbar.scrollLeft;
++            requestAnimationFrame(function () { lock = null; });
++        }, { passive: true });
++
++        window.addEventListener('scroll', scheduleBarUpdate, { passive: true });
++        window.addEventListener('resize', function () { updateStickyOffsets(); scheduleBarUpdate(); });
++        if (window.ResizeObserver) {
++            var ro = new ResizeObserver(function () { updateStickyOffsets(); scheduleBarUpdate(); });
++            ro.observe($table[0]);
++            ro.observe(scroller);
++        }
++
++        // ---- DataTables events
++        $table.on('draw.dt', function () {
++            renderCards();
++            updateStickyOffsets();
++            syncSortSelect();
++            scheduleBarUpdate();
++        });
++        $table.on('processing.dt', function (e, settings, processing) {
++            $('#lrCardsView').toggleClass('is-loading', !!processing);
++        });
++
++        // ---- initial state
++        var saved = null;
++        try { saved = localStorage.getItem(VIEW_KEY); } catch (e) { /* ignore */ }
++        setView(saved === 'cards' ? 'cards' : $panel.attr('data-view'), false);
++        syncSortSelect();
++        if (api.rows().count()) renderCards();
++    });
++})();
+diff --git a/public/assets/js/register.js b/public/assets/js/register.js
+index cc02777..38bf2b6 100644
+--- a/public/assets/js/register.js
++++ b/public/assets/js/register.js
+@@ -1,6 +1,22 @@
+ let dtInstance;
+ let selectedIds = new Set();
+ 
++// Escape user-entered text before it is put into HTML built from template
++// strings / DataTables renderers (names, workplace, notes ... are free text).
++function escapeHtml(value) {
++    return String(value == null ? '' : value)
++        .replace(/&/g, '&amp;')
++        .replace(/</g, '&lt;')
++        .replace(/>/g, '&gt;')
++        .replace(/"/g, '&quot;')
++        .replace(/'/g, '&#39;');
++}
++
++// DataTables renderer for plain text columns: escapes for display, leaves
++// the raw value for sorting/filtering, shows `empty` for null/blank values.
++const textCell = (empty = '') => (d, type) =>
++    type === 'display' ? (d == null || d === '' ? empty : escapeHtml(d)) : d;
++
+ function currentFilters() {
+     return {
+         search:                $('#globalSearch').val() || '',
+@@ -20,8 +36,10 @@ function currentFilters() {
+     };
+ }
+ 
++// One entry per table column, in the same order as the <th> cells / columns[]
++// below (index 0 = checkbox ... last = Actions).
+ const ORDER_COLUMNS = [
+-    null, 'reference_number', 'name', 'surname', 'id_number', 'account_number', 'amount',
++    null, 'reference_number', 'name', 'surname', 'id_number', 'account_number', 'bank_name', 'amount',
+     'branch_name', 'workplace_name', 'loan_count', 'loan_group', 'status', 'repayment_status', 'action_date', 'date_loaded', null,
+ ];
+ 
+@@ -44,7 +62,7 @@ $(function () {
+         searching: false,
+         lengthMenu: [10, 25, 50, 100],
+         pageLength: 25,
+-        order: [[13, 'desc']],
++        order: [[15, 'desc']],
+         ajax: function (data, callback) {
+             const orderIdx = data.order[0].column;
+             const orderDir = data.order[0].dir;
+@@ -68,22 +86,24 @@ $(function () {
+                 data: 'id', orderable: false, className: 'text-center',
+                 render: (id) => `<input type="checkbox" class="row-check" value="${id}">`
+             },
+-            { data: 'reference_number', render: (d) => `<span class="fw-semibold">${d}</span>` },
+-            { data: 'name' },
+-            { data: 'surname' },
+-            { data: 'id_number' },
+-            { data: 'account_number' },
+-             { data: 'bank_name', defaultContent: '-' },
++            { data: 'reference_number', render: (d, type) => type === 'display' ? `<span class="fw-semibold">${escapeHtml(d)}</span>` : d },
++            { data: 'name', render: textCell() },
++            { data: 'surname', render: textCell() },
++            { data: 'id_number', render: textCell() },
++            { data: 'account_number', render: textCell() },
++            { data: 'bank_name', render: textCell('-') },
+             { data: 'amount', render: (d) => fmtMoney(d) },
+-            { data: 'branch_name' },
+-            { data: 'workplace_name', render: (d) => d ? d : '<span class="text-muted">-</span>' },
++            { data: 'branch_name', render: textCell() },
++            { data: 'workplace_name', render: (d, type) => type === 'display'
++                ? (d ? `<span title="${escapeHtml(d)}">${escapeHtml(d)}</span>` : '<span class="text-muted">-</span>')
++                : d },
+             { data: 'loan_count', className: 'text-center' },
+             { data: 'loan_group', render: (d) => `<span class="group-pill ${groupBadgeClass(d)}">${d}</span>` },
+             { data: 'status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
+             { data: 'repayment_status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
+             // { data: 'action_date', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
+             { data: 'action_date', render: (d) => fmtDate(d) },
+-            { data: 'date_loaded', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
++            { data: 'date_loaded', render: (d) => fmtDate(d) },
+             {
+                 data: 'id', orderable: false, className: 'text-nowrap',
+                 render: (id) => window.IS_BRANCH
+diff --git a/views/loans/register.php b/views/loans/register.php
+index 0eee245..3d9915c 100644
+--- a/views/loans/register.php
++++ b/views/loans/register.php
+@@ -83,9 +83,36 @@
+     </div>
+ </div>
+ 
+-<div class="panel-card">
+-    <div class="table-responsive">
+-        <table id="loanTable" class="table table-clean align-middle w-100">
++<link rel="stylesheet" href="<?= APP_URL ?>/assets/css/loan-register.css?v=<?= @filemtime(APP_ROOT . '/public/assets/css/loan-register.css') ?>">
++
++<div class="panel-card lr-panel" id="lrPanel" data-view="table">
++    <script>(function(){try{var v=localStorage.getItem('loanRegisterView');if(v==='cards'||v==='table')document.getElementById('lrPanel').setAttribute('data-view',v);}catch(e){}})();</script>
++
++    <div class="lr-toolbar">
++        <div class="lr-toggle" id="lrViewToggle" role="group" aria-label="Loan register view">
++            <button type="button" class="lr-toggle__btn" data-view="table" aria-pressed="true" title="Table view">
++                <i class="bi bi-table"></i><span>Table</span>
++            </button>
++            <button type="button" class="lr-toggle__btn" data-view="cards" aria-pressed="false" title="Card view">
++                <i class="bi bi-grid-3x3-gap-fill"></i><span>Cards</span>
++            </button>
++        </div>
++
++        <div class="lr-card-tools" id="lrCardTools">
++            <label class="lr-selectall">
++                <input type="checkbox" id="cardsSelectAll">
++                <span>Select all on page</span>
++            </label>
++            <label class="lr-sort">
++                <span>Sort by</span>
++                <select id="cardsSort" class="form-select form-select-sm"></select>
++            </label>
++            <span class="lr-count" id="lrCount"></span>
++        </div>
++    </div>
++
++    <div class="lr-table-view">
++        <table id="loanTable" class="table table-clean lr-table align-middle">
+             <thead>
+                 <tr>
+                     <th><input type="checkbox" id="selectAll"></th>
+@@ -111,6 +138,10 @@
+         </table>
+     </div>
+ 
++    <div class="lr-cards-view" id="lrCardsView">
++        <div class="lr-cards" id="loanCards" aria-live="polite"></div>
++    </div>
++
+     <div class="bulk-action-bar" id="bulkActionBar">
+         <span id="selectedCount" class="me-2 fw-semibold">0 rows selected</span>
+         <?php if (!$isBranch): ?>
+@@ -272,4 +303,12 @@
+ </div>
+ <?php endif; ?>
+ 
+-<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>
++<!-- Always-visible horizontal scrollbar (pinned to the bottom of the screen, synced with the table) -->
++<div class="lr-hbar" id="lrHbar" aria-hidden="true"><div class="lr-hbar__track" id="lrHbarTrack"></div></div>
++
++<?php
++$v = function (string $file): string { return (string) @filemtime(APP_ROOT . '/public/assets/js/' . $file); };
++$pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script>'
++    . '<script src="' . APP_URL . '/assets/js/register.js?v=' . $v('register.js') . '"></script>'
++    . '<script src="' . APP_URL . '/assets/js/register-views.js?v=' . $v('register-views.js') . '"></script>';
++?>

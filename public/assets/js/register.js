@@ -1,6 +1,22 @@
 let dtInstance;
 let selectedIds = new Set();
 
+// Escape user-entered text before it is put into HTML built from template
+// strings / DataTables renderers (names, workplace, notes ... are free text).
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// DataTables renderer for plain text columns: escapes for display, leaves
+// the raw value for sorting/filtering, shows `empty` for null/blank values.
+const textCell = (empty = '') => (d, type) =>
+    type === 'display' ? (d == null || d === '' ? empty : escapeHtml(d)) : d;
+
 function currentFilters() {
     return {
         search:                $('#globalSearch').val() || '',
@@ -20,8 +36,10 @@ function currentFilters() {
     };
 }
 
+// One entry per table column, in the same order as the <th> cells / columns[]
+// below (index 0 = checkbox ... last = Actions).
 const ORDER_COLUMNS = [
-    null, 'reference_number', 'name', 'surname', 'id_number', 'account_number', 'amount',
+    null, 'reference_number', 'name', 'surname', 'id_number', 'account_number', 'bank_name', 'amount',
     'branch_name', 'workplace_name', 'loan_count', 'loan_group', 'status', 'repayment_status', 'action_date', 'date_loaded', null,
 ];
 
@@ -44,7 +62,7 @@ $(function () {
         searching: false,
         lengthMenu: [10, 25, 50, 100],
         pageLength: 25,
-        order: [[13, 'desc']],
+        order: [[15, 'desc']],
         ajax: function (data, callback) {
             const orderIdx = data.order[0].column;
             const orderDir = data.order[0].dir;
@@ -68,22 +86,24 @@ $(function () {
                 data: 'id', orderable: false, className: 'text-center',
                 render: (id) => `<input type="checkbox" class="row-check" value="${id}">`
             },
-            { data: 'reference_number', render: (d) => `<span class="fw-semibold">${d}</span>` },
-            { data: 'name' },
-            { data: 'surname' },
-            { data: 'id_number' },
-            { data: 'account_number' },
-             { data: 'bank_name', defaultContent: '-' },
+            { data: 'reference_number', render: (d, type) => type === 'display' ? `<span class="fw-semibold">${escapeHtml(d)}</span>` : d },
+            { data: 'name', render: textCell() },
+            { data: 'surname', render: textCell() },
+            { data: 'id_number', render: textCell() },
+            { data: 'account_number', render: textCell() },
+            { data: 'bank_name', render: textCell('-') },
             { data: 'amount', render: (d) => fmtMoney(d) },
-            { data: 'branch_name' },
-            { data: 'workplace_name', render: (d) => d ? d : '<span class="text-muted">-</span>' },
+            { data: 'branch_name', render: textCell() },
+            { data: 'workplace_name', render: (d, type) => type === 'display'
+                ? (d ? `<span title="${escapeHtml(d)}">${escapeHtml(d)}</span>` : '<span class="text-muted">-</span>')
+                : d },
             { data: 'loan_count', className: 'text-center' },
             { data: 'loan_group', render: (d) => `<span class="group-pill ${groupBadgeClass(d)}">${d}</span>` },
             { data: 'status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
             { data: 'repayment_status', render: (d) => `<span class="badge-status ${statusBadgeClass(d)}">${d}</span>` },
             // { data: 'action_date', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
             { data: 'action_date', render: (d) => fmtDate(d) },
-            { data: 'date_loaded', render: (d) => d ? new Date(d).toLocaleDateString('en-ZA') : '' },
+            { data: 'date_loaded', render: (d) => fmtDate(d) },
             {
                 data: 'id', orderable: false, className: 'text-nowrap',
                 render: (id) => window.IS_BRANCH

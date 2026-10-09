@@ -1,0 +1,267 @@
+/* =====================================================================
+   Loan Register - Table view + Card view
+   Loaded only by views/loans/register.php. Uses the colour tokens from
+   style.css (--brand-primary, --border-color, --text-dark, ...).
+   ===================================================================== */
+
+:root {
+    /* Alternating colour loop - shared by table rows AND cards.
+       1st = smoke white, 2nd = greenish white, then repeat. */
+    --lr-row-a:        #f5f5f3;
+    --lr-row-b:        #e8f5ee;
+    --lr-row-hover:    #d8eee3;
+    --lr-row-selected: #c6e7d6;
+    --lr-edge:         rgba(14, 47, 54, .24);
+}
+
+/* ---------- Toolbar + Table/Cards toggle ---------- */
+.lr-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 12px 20px;
+    margin-bottom: 14px;
+}
+
+.lr-toggle {
+    display: inline-flex; padding: 3px; gap: 2px;
+    background: #eaf0ef; border: 1px solid var(--border-color); border-radius: 12px;
+}
+.lr-toggle__btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 0; background: transparent; cursor: pointer;
+    padding: 7px 16px; border-radius: 9px;
+    font: 600 13px/1 'Inter', sans-serif; color: var(--text-muted);
+    transition: background .15s, color .15s, box-shadow .15s;
+}
+.lr-toggle__btn:hover { color: var(--brand-primary-dark); }
+.lr-toggle__btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+.lr-toggle__btn i { font-size: 15px; }
+/* active state is driven by the panel's data-view so there is no flash on load */
+.lr-panel[data-view="table"] .lr-toggle__btn[data-view="table"],
+.lr-panel[data-view="cards"] .lr-toggle__btn[data-view="cards"] {
+    background: #fff; color: var(--brand-primary-dark);
+    box-shadow: 0 1px 3px rgba(16, 42, 49, .16);
+}
+
+.lr-card-tools { display: none; align-items: center; flex-wrap: wrap; gap: 10px 20px; }
+.lr-selectall, .lr-sort { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; color: var(--text-dark); cursor: pointer; }
+.lr-sort { cursor: default; }
+.lr-sort span { color: var(--text-muted); font-weight: 600; }
+.lr-sort select { width: auto; min-width: 190px; }
+.lr-selectall input { width: 17px; height: 17px; accent-color: var(--brand-primary); cursor: pointer; }
+.lr-count { font-size: 12.5px; color: var(--text-muted); }
+
+.lr-panel .dataTables_length { margin-bottom: 12px; }
+.lr-panel .dataTables_info { padding-top: 16px; }
+
+/* ---------- View switching (driven by #lrPanel[data-view]) ---------- */
+.lr-cards-view { display: none; }
+.lr-panel[data-view="cards"] .lr-cards-view { display: block; }
+.lr-panel[data-view="cards"] .lr-card-tools { display: flex; }
+.lr-panel[data-view="cards"] .lr-scroll,
+.lr-panel[data-view="cards"] #loanTable { display: none; }
+
+/* ---------- TABLE VIEW ---------- */
+/* The horizontal scroller. The table never wraps text, so every column stays
+   readable and the user scrolls sideways instead of squinting at squashed cells. */
+.lr-scroll {
+    position: relative;
+    overflow-x: auto; overflow-y: hidden;
+    border: 1px solid var(--border-color); border-radius: 12px; background: #fff;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-color: var(--brand-primary) #e3ecea;
+}
+.lr-scroll::-webkit-scrollbar,
+.lr-hbar::-webkit-scrollbar { height: 14px; }
+.lr-scroll::-webkit-scrollbar-track,
+.lr-hbar::-webkit-scrollbar-track { background: #e3ecea; }
+.lr-scroll::-webkit-scrollbar-thumb,
+.lr-hbar::-webkit-scrollbar-thumb { background: var(--brand-primary); border-radius: 8px; border: 3px solid #e3ecea; }
+.lr-scroll::-webkit-scrollbar-thumb:hover,
+.lr-hbar::-webkit-scrollbar-thumb:hover { background: var(--brand-primary-dark); }
+
+#loanTable.lr-table {
+    width: max-content !important;     /* DataTables writes width:100% inline */
+    min-width: 100%;
+    margin: 0;
+    border-collapse: separate;         /* required for sticky cells to keep their borders */
+    border-spacing: 0;
+}
+#loanTable.lr-table > thead > tr > th {
+    background-color: #eaf1ef;
+    color: #52656d;
+    border-bottom: 2px solid #d6e3df;
+    padding: 12px 14px;
+    white-space: nowrap;
+}
+#loanTable.lr-table > tbody > tr > td {
+    padding: 11px 14px;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(14, 47, 54, .07);
+    background-color: var(--lr-cell-bg);
+}
+#loanTable.lr-table > tbody > tr:last-child > td { border-bottom: 0; }
+#loanTable.lr-table td.dataTables_empty { white-space: normal; text-align: center; padding: 36px 14px; color: var(--text-muted); }
+
+/* colour loop for rows: colour 1, colour 2, colour 1, colour 2 ... */
+#loanTable.lr-table > tbody > tr                  { --lr-cell-bg: var(--lr-row-a); }
+#loanTable.lr-table > tbody > tr:nth-child(even)  { --lr-cell-bg: var(--lr-row-b); }
+#loanTable.lr-table > tbody > tr:hover            { --lr-cell-bg: var(--lr-row-hover); }
+#loanTable.lr-table > tbody > tr.is-selected      { --lr-cell-bg: var(--lr-row-selected); }
+
+/* Pinned columns: Name (3), Surname (4), ID Number (5). Their `left` offsets are
+   measured and set by register-views.js (--lr-left-4 / --lr-left-5) so they
+   stay exact whatever the content width. #loanTable is in every selector so
+   these beat DataTables' own `position: relative` on sortable headers. */
+#loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3),
+#loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4),
+#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { position: sticky; }
+#loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3) { left: 0; }
+#loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4) { left: var(--lr-left-4, 0px); }
+#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { left: var(--lr-left-5, 0px); }
+#loanTable.lr-table td:nth-child(3), #loanTable.lr-table td:nth-child(4), #loanTable.lr-table td:nth-child(5) { z-index: 2; }
+#loanTable.lr-table th:nth-child(3), #loanTable.lr-table th:nth-child(4), #loanTable.lr-table th:nth-child(5) { z-index: 4; }
+#loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { border-right: 1px solid #cfe0da; }
+/* soft edge shadow once content is sliding underneath the pinned columns */
+.lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(5),
+.lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(5) { box-shadow: 9px 0 12px -8px var(--lr-edge); }
+
+/* Phones: three pinned columns would fill the whole screen, so pin only Name. */
+@media (max-width: 575.98px) {
+    #loanTable.lr-table th:nth-child(4), #loanTable.lr-table td:nth-child(4),
+    #loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { position: static; box-shadow: none; }
+    #loanTable.lr-table th:nth-child(5), #loanTable.lr-table td:nth-child(5) { border-right: 0; }
+    #loanTable.lr-table th:nth-child(3), #loanTable.lr-table td:nth-child(3) { border-right: 1px solid #cfe0da; }
+    .lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(5),
+    .lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(5) { box-shadow: none; }
+    .lr-scroll.is-scrolled #loanTable.lr-table th:nth-child(3),
+    .lr-scroll.is-scrolled #loanTable.lr-table td:nth-child(3) { box-shadow: 9px 0 12px -8px var(--lr-edge); }
+}
+
+/* ---------- Fixed horizontal scrollbar (bottom of the screen) ---------- */
+.lr-hbar {
+    position: fixed; bottom: 0; left: 0; width: 100%; height: 18px;
+    overflow-x: scroll; overflow-y: hidden;
+    display: none; z-index: 1015;
+    background: #e3ecea; border-top: 1px solid #cfe0da;
+    box-shadow: 0 -6px 16px rgba(14, 47, 54, .14);
+    scrollbar-color: var(--brand-primary) #e3ecea;
+}
+.lr-hbar.is-visible { display: block; }
+.lr-hbar__track { height: 1px; }
+
+/* ---------- CARD VIEW ---------- */
+.lr-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    gap: 16px;
+    padding: 2px 0 6px;
+    transition: opacity .15s;
+}
+.lr-cards-view.is-loading .lr-cards { opacity: .45; pointer-events: none; }
+
+.lr-card {
+    --lr-accent: #9aa8ae;
+    position: relative;
+    display: flex; flex-direction: column; gap: 14px;
+    min-width: 0;
+    padding: 16px 16px 14px 18px;
+    border: 1px solid rgba(14, 47, 54, .09);
+    border-left: 5px solid var(--lr-accent);
+    border-radius: 16px;
+    background: var(--lr-card-bg);
+    box-shadow: 0 1px 2px rgba(16, 42, 49, .05);
+    transition: box-shadow .18s, transform .18s, border-color .18s;
+}
+/* colour loop for cards: smoke white, greenish white, smoke white, ... */
+.lr-card:nth-child(odd)  { --lr-card-bg: var(--lr-row-a); }
+.lr-card:nth-child(even) { --lr-card-bg: var(--lr-row-b); }
+.lr-card:hover { box-shadow: 0 10px 24px rgba(16, 42, 49, .12); transform: translateY(-2px); }
+.lr-card.is-selected { border-color: var(--brand-primary); border-left-color: var(--lr-accent); box-shadow: 0 0 0 2px rgba(20, 160, 133, .38), 0 8px 20px rgba(16, 42, 49, .10); }
+
+.lr-card[data-status="pending-review"] { --lr-accent: #8b9aa3; }
+.lr-card[data-status="approved"]       { --lr-accent: #14a085; }
+.lr-card[data-status="disbursed"]      { --lr-accent: #3b6fd4; }
+.lr-card[data-status="rejected"]       { --lr-accent: #d64545; }
+.lr-card[data-status="closed"]         { --lr-accent: #7a56d6; }
+
+/* header: checkbox, avatar, name + ID, group */
+.lr-card__head { display: flex; align-items: center; gap: 12px; }
+.lr-check { display: inline-flex; margin: 0; cursor: pointer; }
+.lr-check input { width: 18px; height: 18px; accent-color: var(--brand-primary); cursor: pointer; }
+
+.lr-avatar {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font: 700 15px/1 'Inter', sans-serif; letter-spacing: .5px; color: #fff;
+    background: linear-gradient(135deg, #14a085, #0b7a65);
+    box-shadow: 0 2px 6px rgba(14, 47, 54, .22);
+}
+.lr-av-1 { background: linear-gradient(135deg, #3b6fd4, #274fa6); }
+.lr-av-2 { background: linear-gradient(135deg, #7a56d6, #5638a8); }
+.lr-av-3 { background: linear-gradient(135deg, #e09a2d, #b9791b); }
+.lr-av-4 { background: linear-gradient(135deg, #d9576b, #b13a4d); }
+.lr-av-5 { background: linear-gradient(135deg, #5b7a86, #3f5964); }
+
+.lr-card__title { flex: 1 1 auto; min-width: 0; }
+.lr-card__name {
+    margin: 0; font-size: 16px; font-weight: 700; line-height: 1.25; color: var(--brand-dark);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; overflow-wrap: anywhere;
+}
+.lr-card__sub { margin-top: 3px; font-size: 12.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.lr-card__sub i { margin-right: 4px; opacity: .8; }
+.lr-card__head .group-pill { flex: 0 0 auto; align-self: flex-start; }
+
+/* reference + loan count */
+.lr-card__ref { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -4px; }
+.lr-ref { font-size: 12px; font-weight: 700; letter-spacing: .3px; color: #3d545c; font-variant-numeric: tabular-nums; }
+.lr-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 20px;
+    font-size: 11.5px; font-weight: 700;
+    background: rgba(14, 47, 54, .07); color: #3d545c;
+}
+
+/* money strip: Amount | Interest | Amount due */
+.lr-money {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
+    background: #fff; border: 1px solid rgba(14, 47, 54, .10); border-radius: 12px; overflow: hidden;
+}
+.lr-money > div { padding: 9px 10px; min-width: 0; }
+.lr-money > div + div { border-left: 1px solid rgba(14, 47, 54, .08); }
+.lr-money span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.lr-money strong { display: block; margin-top: 3px; font-size: 14px; font-weight: 800; color: var(--text-dark); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lr-money .lr-money__due { background: var(--brand-soft); }
+.lr-money .lr-money__due strong { color: var(--brand-primary-dark); }
+
+.lr-card__badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.lr-card .badge-status, .lr-card .group-pill { box-shadow: inset 0 0 0 1px rgba(14, 47, 54, .10); }
+
+/* details grid */
+.lr-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 16px; margin: 0; }
+.lr-details > div { min-width: 0; }
+.lr-details dt { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); }
+.lr-details dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: var(--text-dark); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.lr-details dd a { color: inherit; text-decoration: none; border-bottom: 1px dotted rgba(14, 47, 54, .4); }
+.lr-details dd a:hover { color: var(--brand-primary-dark); }
+.lr-details .is-empty { color: #9aa8ae; font-weight: 500; }
+
+.lr-card__notes {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    margin: 0; padding: 8px 11px; border-radius: 10px;
+    font-size: 12.5px; font-style: italic; color: #4d636b; background: rgba(255, 255, 255, .7);
+}
+
+.lr-card__actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    margin-top: auto; padding-top: 12px; border-top: 1px dashed rgba(14, 47, 54, .18);
+}
+
+.lr-empty { grid-column: 1 / -1; padding: 48px 16px; text-align: center; color: var(--text-muted); }
+.lr-empty i { display: block; margin-bottom: 10px; font-size: 38px; color: #b7c7c2; }
+
+@media (prefers-reduced-motion: reduce) {
+    .lr-card, .lr-cards, .lr-toggle__btn { transition: none; }
+    .lr-card:hover { transform: none; }
+}
+@media print { .lr-hbar { display: none !important; } }
