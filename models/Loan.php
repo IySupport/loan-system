@@ -227,7 +227,7 @@ public function update(int $id, array $d): bool
     }
 
     private const SORTABLE = [
-        'reference_number', 'name', 'surname', 'id_number', 'account_number',  'bank','amount',
+        'reference_number', 'name', 'surname', 'id_number', 'account_number',  'bank', 'bank_name', 'amount',
         'branch_name', 'loan_count', 'loan_group', 'status', 'repayment_status', 'action_date', 'date_loaded',
         'workplace_name',
     ];

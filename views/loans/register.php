@@ -83,9 +83,36 @@
     </div>
 </div>
 
-<div class="panel-card">
-    <div class="table-responsive">
-        <table id="loanTable" class="table table-clean align-middle w-100">
+<link rel="stylesheet" href="<?= APP_URL ?>/assets/css/loan-register.css?v=<?= @filemtime(APP_ROOT . '/public/assets/css/loan-register.css') ?>">
+
+<div class="panel-card lr-panel" id="lrPanel" data-view="table">
+    <script>(function(){try{var v=localStorage.getItem('loanRegisterView');if(v==='cards'||v==='table')document.getElementById('lrPanel').setAttribute('data-view',v);}catch(e){}})();</script>
+
+    <div class="lr-toolbar">
+        <div class="lr-toggle" id="lrViewToggle" role="group" aria-label="Loan register view">
+            <button type="button" class="lr-toggle__btn" data-view="table" aria-pressed="true" title="Table view">
+                <i class="bi bi-table"></i><span>Table</span>
+            </button>
+            <button type="button" class="lr-toggle__btn" data-view="cards" aria-pressed="false" title="Card view">
+                <i class="bi bi-grid-3x3-gap-fill"></i><span>Cards</span>
+            </button>
+        </div>
+
+        <div class="lr-card-tools" id="lrCardTools">
+            <label class="lr-selectall">
+                <input type="checkbox" id="cardsSelectAll">
+                <span>Select all on page</span>
+            </label>
+            <label class="lr-sort">
+                <span>Sort by</span>
+                <select id="cardsSort" class="form-select form-select-sm"></select>
+            </label>
+            <span class="lr-count" id="lrCount"></span>
+        </div>
+    </div>
+
+    <div class="lr-table-view">
+        <table id="loanTable" class="table table-clean lr-table align-middle">
             <thead>
                 <tr>
                     <th><input type="checkbox" id="selectAll"></th>
@@ -109,6 +136,10 @@
             </thead>
             <tbody></tbody>
         </table>
+    </div>
+
+    <div class="lr-cards-view" id="lrCardsView">
+        <div class="lr-cards" id="loanCards" aria-live="polite"></div>
     </div>
 
     <div class="bulk-action-bar" id="bulkActionBar">
@@ -272,4 +303,12 @@
 </div>
 <?php endif; ?>
 
-<?php $pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script><script src="' . APP_URL . '/assets/js/register.js"></script>'; ?>
+<!-- Always-visible horizontal scrollbar (pinned to the bottom of the screen, synced with the table) -->
+<div class="lr-hbar" id="lrHbar" aria-hidden="true"><div class="lr-hbar__track" id="lrHbarTrack"></div></div>
+
+<?php
+$v = function (string $file): string { return (string) @filemtime(APP_ROOT . '/public/assets/js/' . $file); };
+$pageScripts = '<script>window.CSRF_TOKEN = "' . $csrf . '"; window.IS_BRANCH = ' . ($isBranch ? 'true' : 'false') . ';</script>'
+    . '<script src="' . APP_URL . '/assets/js/register.js?v=' . $v('register.js') . '"></script>'
+    . '<script src="' . APP_URL . '/assets/js/register-views.js?v=' . $v('register-views.js') . '"></script>';
+?>
